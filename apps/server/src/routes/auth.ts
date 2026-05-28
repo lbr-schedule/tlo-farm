@@ -147,9 +147,11 @@ router.post('/register', async (req: Request, res: Response) => {
       sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [account, passwordHash, nickname, emailValue, 1, 0, 500, now, now]
     });
+    console.log('[DEBUG] Insert result:', JSON.stringify(insertResult));
 
     // Get the inserted user's ID from lastInsertRowid, then query for full data
     const newUserId = Number(insertResult.lastInsertRowid);
+    console.log('[DEBUG] newUserId:', newUserId);
     if (!newUserId) {
       return res.status(500).json({
         success: false,
