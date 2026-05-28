@@ -7,11 +7,7 @@ const client = createClient({
   authToken: process.env.DATABASE_AUTH_TOKEN
 });
 
-export const db = drizzle(client, { 
-  schema,
-  migrations: {
-    forceAbort: true
-  }
-});
+// Disable automatic migration checks by not passing schema initially
+export const db = drizzle(client, { schema, migrations: undefined });
 
 export * from './schema';
