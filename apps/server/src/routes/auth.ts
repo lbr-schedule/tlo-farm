@@ -159,10 +159,11 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const userResult = await db.execute(
-      'SELECT * FROM users WHERE id = ?',
-      [newUserId]
-    );
+    const userResult = await db.execute({
+      sql: 'SELECT * FROM users WHERE id = ?',
+      args: [newUserId]
+    });
+    console.log('[DEBUG] userResult:', JSON.stringify(userResult));
     const userRows = userResult.rows as User[];
     const newUser = userRows[0];
 
