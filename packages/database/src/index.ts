@@ -1,6 +1,6 @@
-import { createClient, type Client } from '@libsql/client';
+import { createClient } from '@libsql/client';
 
-const client: Client = createClient({
+const client = createClient({
   url: process.env.DATABASE_URL || '',
   authToken: process.env.DATABASE_AUTH_TOKEN
 });
