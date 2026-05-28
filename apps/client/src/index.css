@@ -1,0 +1,53 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Cubic 11', sans-serif;
+  background: linear-gradient(180deg, #87CEEB 0%, #98D8C8 50%, #90EE90 100%);
+  min-height: 100vh;
+  color: #4a3520;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+input {
+  font-family: 'Cubic 11', sans-serif;
+}
+
+button {
+  font-family: 'Cubic 11', sans-serif;
+  cursor: pointer;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-10px); }
+  40% { transform: translateX(10px); }
+  60% { transform: translateX(-10px); }
+  80% { transform: translateX(10px); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-shake { animation: shake 0.5s ease-in-out; }
+.animate-slide-in { animation: slideIn 0.4s ease-out 0.4s both; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }

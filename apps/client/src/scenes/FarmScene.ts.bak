@@ -1,0 +1,648 @@
+import Phaser from 'phaser';
+
+export interface TileData {
+  x: number;
+  y: number;
+  type: 'grass' | 'soil' | 'path' | 'tree';
+  cropId?: number;
+  plantedAt?: number;
+  finishAt?: number;
+  state: 'empty' | 'planted' | 'growing' | 'ready' | 'dead';
+}
+
+export interface CropData {
+  id: number;
+  nameZhTw: string;
+  growTimeSec: number;
+  sellPrice: number;
+  exp: number;
+  sprite: string;
+}
+
+export const TILE_SIZE = 32;
+export const GRID_WIDTH = 10;
+export const GRID_HEIGHT = 10;
+
+export const TILE_TYPES = {
+  GRASS: 'grass',
+  SOIL: 'soil',
+  PATH: 'path',
+  TREE: 'tree'
+} as const;
+
+export default class FarmScene extends Phaser.Scene {
+  private tiles: Map<string, Phaser.GameObjects.Container> = new Map();
+  private hoverTile: Phaser.GameObjects.Container | null = null;
+  private selectedTile: Phaser.GameObjects.Container | null = null;
+  private farmTiles: Map<string, TileData> = new Map();
+  private crops: CropData[] = [];
+  private selectedTool: string = 'plant';
+  private uiContainer: Phaser.GameObjects.Container | null = null;
+
+  constructor() {
+    super({ key: 'FarmScene' });
+  }
+
+  preload() {
+    // preload 只需要保證紋理存在即可
+  }
+
+  create() {
+    // 先設置天空背景
+    this.cameras.main.setBackgroundColor(0x87CEEB);
+    
+    // 建立所有紋理（同步進行，不等待 fonts）
+    this.createPixelArtTextures();
+    
+    // 建立網格
+    this.createGrid();
+    this.createHoverEffect();
+    this.createUI();
+    this.setupInput();
+    this.loadCrops();
+    this.loadFarmTiles();
+  }
+
+  private createPixelArtTextures() {
+    const graphics = this.make.graphics({ x: 0, y: 0 });
+
+    // 草地 tile
+    graphics.clear();
+    graphics.fillStyle(0x7EC850, 1);
+    graphics.fillRect(0, 0, 32, 32);
+    graphics.fillStyle(0x6AB840, 1);
+    for (let i = 0; i < 8; i++) {
+      graphics.fillRect(
+        Phaser.Math.Between(2, 28),
+        Phaser.Math.Between(2, 28),
+        2,
+        4
+      );
+    }
+    graphics.generateTexture('tile_grass', 32, 32);
+
+    // 土壤 tile（可耕作）
+    graphics.clear();
+    graphics.fillStyle(0x8B6914, 1);
+    graphics.fillRect(0, 0, 32, 32);
+    graphics.fillStyle(0x7A5C12, 1);
+    for (let i = 0; i < 6; i++) {
+      graphics.fillRect(
+        Phaser.Math.Between(0, 24),
+        Phaser.Math.Between(0, 24),
+        4,
+        2
+      );
+    }
+    graphics.generateTexture('tile_soil', 32, 32);
+
+    // 路徑 tile
+    graphics.clear();
+    graphics.fillStyle(0xC4A460, 1);
+    graphics.fillRect(0, 0, 32, 32);
+    graphics.fillStyle(0xB39450, 1);
+    graphics.fillRect(2, 2, 12, 12);
+    graphics.fillRect(18, 18, 12, 12);
+    graphics.generateTexture('tile_path', 32, 32);
+
+    // 樹木裝飾
+    graphics.clear();
+    graphics.fillStyle(0x4A2800, 1);
+    graphics.fillRect(14, 24, 6, 8);
+    graphics.fillStyle(0x2D5016, 1);
+    graphics.fillCircle(17, 16, 12);
+    graphics.fillStyle(0x3A6820, 1);
+    graphics.fillCircle(17, 14, 8);
+    graphics.generateTexture('tile_tree', 32, 32);
+
+    // 選中框
+    graphics.clear();
+    graphics.lineStyle(3, 0xFFD700, 1);
+    graphics.strokeRect(1, 1, 30, 30);
+    graphics.generateTexture('selection_box', 32, 32);
+
+    // Hover 效果
+    graphics.clear();
+    graphics.lineStyle(2, 0xFFFFFF, 0.8);
+    graphics.strokeRect(1, 1, 30, 30);
+    graphics.generateTexture('hover_effect', 32, 32);
+
+    // 作物圖示（小麦）
+    graphics.clear();
+    graphics.fillStyle(0xF4D03F, 1);
+    graphics.fillRect(14, 8, 4, 16);
+    graphics.fillStyle(0xF5D76E, 1);
+    graphics.fillRect(12, 6, 8, 4);
+    graphics.fillRect(10, 10, 4, 4);
+    graphics.fillRect(20, 10, 4, 4);
+    graphics.generateTexture('crop_wheat', 32, 32);
+
+    // 作物圖示（玉米）
+    graphics.clear();
+    graphics.fillStyle(0x27AE60, 1);
+    graphics.fillRect(15, 4, 3, 20);
+    graphics.fillStyle(0xF1C40F, 1);
+    graphics.fillEllipse(17, 12, 8, 12);
+    graphics.generateTexture('crop_corn', 32, 32);
+
+    // 作物圖示（番茄）
+    graphics.clear();
+    graphics.fillStyle(0x27AE60, 1);
+    graphics.fillRect(15, 2, 3, 8);
+    graphics.fillStyle(0xE74C3C, 1);
+    graphics.fillCircle(17, 16, 8);
+    graphics.fillStyle(0xC0392B, 1);
+    graphics.fillCircle(15, 15, 3);
+    graphics.generateTexture('crop_tomato', 32, 32);
+
+    // 作物圖示（草莓）
+    graphics.clear();
+    graphics.fillStyle(0x27AE60, 1);
+    graphics.fillRect(15, 4, 3, 10);
+    graphics.fillStyle(0xE74C3C, 1);
+    graphics.fillCircle(17, 16, 7);
+    graphics.fillStyle(0xFF6B6B, 1);
+    graphics.fillCircle(14, 14, 2);
+    graphics.fillCircle(20, 15, 2);
+    graphics.generateTexture('crop_strawberry', 32, 32);
+
+    // 按鈕背景
+    graphics.clear();
+    graphics.fillStyle(0x8B5A2B, 1);
+    graphics.fillRect(0, 0, 80, 32);
+    graphics.fillStyle(0x5C3D2E, 1);
+    graphics.fillRect(0, 0, 80, 4);
+    graphics.fillRect(0, 28, 80, 4);
+    graphics.fillRect(0, 0, 4, 32);
+    graphics.fillRect(76, 0, 4, 32);
+    graphics.generateTexture('btn_normal', 80, 32);
+
+    // 鎖定按鈕
+    graphics.clear();
+    graphics.fillStyle(0x666666, 1);
+    graphics.fillRect(0, 0, 80, 32);
+    graphics.fillStyle(0x444444, 1);
+    graphics.fillRect(0, 0, 80, 4);
+    graphics.generateTexture('btn_disabled', 80, 32);
+
+    graphics.destroy();
+  }
+
+  private createBackground() {
+    // 天空背景（讓 React 層的 pixel art 雲朵可見）
+    this.cameras.main.setBackgroundColor(0x87CEEB);
+    // 不在 Phaser 內畫雲朵，讓 React UI 層的 pixel art 雲朵顯示
+  }
+
+  private createGrid() {
+    const startX = (800 - GRID_WIDTH * TILE_SIZE) / 2;
+    const startY = (600 - GRID_HEIGHT * TILE_SIZE) / 2 - 20;
+
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const tileType = this.getTileType(x, y);
+        const tileKey = `tile_${tileType}`;
+        const container = this.add.container(
+          startX + x * TILE_SIZE,
+          startY + y * TILE_SIZE
+        );
+
+        const tileSprite = this.add.image(0, 0, tileKey);
+        container.add(tileSprite);
+
+        if (tileType === TILE_TYPES.SOIL) {
+          const plotData: TileData = {
+            x,
+            y,
+            type: 'soil',
+            state: 'empty'
+          };
+          this.farmTiles.set(`${x},${y}`, plotData);
+
+          tileSprite.setInteractive();
+          tileSprite.on('pointerover', () => this.onTileHover(x, y));
+          tileSprite.on('pointerout', () => this.onTileOut());
+          tileSprite.on('pointerdown', () => this.onTileClick(x, y));
+        }
+
+        container.setData('x', x);
+        container.setData('y', y);
+        container.setData('type', tileType);
+        this.tiles.set(`${x},${y}`, container);
+      }
+    }
+  }
+
+  private getTileType(x: number, y: number): string {
+    // 設計簡單的地圖：邊緣是草，中間是土壤
+    if (x === 0 || x === GRID_WIDTH - 1 || y === 0 || y === GRID_HEIGHT - 1) {
+      return TILE_TYPES.GRASS;
+    }
+    // 設計小路
+    if (y === 5 && (x === 2 || x === 7)) {
+      return TILE_TYPES.PATH;
+    }
+    // 角落放樹
+    if ((x === 0 && y === 0) || (x === GRID_WIDTH - 1 && y === 0) ||
+        (x === 0 && y === GRID_HEIGHT - 1) || (x === GRID_WIDTH - 1 && y === GRID_HEIGHT - 1)) {
+      return TILE_TYPES.TREE;
+    }
+    return TILE_TYPES.SOIL;
+  }
+
+  private createHoverEffect() {
+    this.hoverTile = this.add.container(0, 0);
+    const hoverSprite = this.add.image(0, 0, 'hover_effect');
+    hoverSprite.setVisible(false);
+    this.hoverTile.add(hoverSprite);
+    this.hoverTile.setDepth(100);
+  }
+
+  private createUI() {
+    this.uiContainer = this.add.container(0, 0);
+    this.uiContainer.setDepth(200);
+
+    // 工具列背景（透明，只留按鈕）
+    // 狀態顯示已移到 React 層（GamePage），不重複
+  }
+
+  private createToolButton(x: number, y: number, label: string, icon: string) {
+    const container = this.add.container(x, y);
+
+    const btnBg = this.add.image(0, 0, 'btn_normal');
+    btnBg.setScale(1.2, 1);
+    container.add(btnBg);
+
+    const btnText = this.add.text(0, 0, `${icon} ${label}`, {
+      fontSize: '14px',
+      fontFamily: 'Cubic 11, Microsoft JhengHei',
+      color: '#FFFFFF',
+      stroke: '#3d2518',
+      strokeThickness: 2
+    });
+    btnText.setOrigin(0.5);
+    container.add(btnText);
+
+    btnBg.setInteractive();
+    btnBg.on('pointerover', () => {
+      if (this.selectedTool !== label) {
+        btnBg.setTint(0xAAAAAA);
+      }
+    });
+    btnBg.on('pointerout', () => {
+      btnBg.clearTint();
+    });
+    btnBg.on('pointerdown', () => {
+      this.selectedTool = label;
+      this.updateToolSelection();
+    });
+
+    container.setData('toolId', label);
+
+    return container;
+  }
+
+  private createStatusDisplay() {
+    // 玩家狀態面板
+    const statusBg = this.add.graphics();
+    statusBg.fillStyle(0x5C3D2E, 0.95);
+    statusBg.fillRoundedRect(10, 540, 160, 50, 5);
+    statusBg.setScrollFactor(0);
+    this.uiContainer!.add(statusBg);
+
+    const statusText = this.add.text(20, 555, '💰 500  ⭐ Lv.1  ✨ 0/100 XP', {
+      fontSize: '12px',
+      fontFamily: 'Cubic 11, Microsoft JhengHei',
+      color: '#FFFFFF'
+    });
+    statusText.setScrollFactor(0);
+    this.uiContainer!.add(statusText);
+  }
+
+  private updateToolSelection() {
+    // 更新工具選中狀態
+    const tools = this.uiContainer?.getAll('children').filter(
+      c => c.getData('toolId')
+    );
+    // TODO: 更新選中狀態
+  }
+
+  private setupInput() {
+    // ESC 取消選中
+    this.input.keyboard?.on('keydown-ESC', () => {
+      this.clearSelection();
+    });
+  }
+
+  private onTileHover(x: number, y: number) {
+    const tile = this.tiles.get(`${x},${y}`);
+    if (tile && this.hoverTile) {
+      this.hoverTile.setPosition(tile.x, tile.y);
+      this.hoverTile.getAt(0)?.setVisible(true);
+    }
+  }
+
+  private onTileOut() {
+    if (this.hoverTile) {
+      this.hoverTile.getAt(0)?.setVisible(false);
+    }
+  }
+
+  private onTileClick(x: number, y: number) {
+    const tile = this.tiles.get(`${x},${y}`);
+    if (!tile) return;
+
+    const tileData = this.farmTiles.get(`${x},${y}`);
+
+    // 顯示選中框
+    if (this.selectedTile) {
+      const oldSel = this.selectedTile.getAt(0);
+      if (oldSel instanceof Phaser.GameObjects.Image && oldSel.texture.key === 'selection_box') {
+        oldSel.setVisible(false);
+      }
+    }
+
+    const selImg = tile.getAt(0);
+    if (selImg instanceof Phaser.GameObjects.Image) {
+      selImg.setTexture('selection_box');
+      selImg.setVisible(true);
+    }
+    this.selectedTile = tile;
+
+    // 根據工具和 tile 狀態執行操作
+    this.handleTileAction(x, y, tileData);
+  }
+
+  private handleTileAction(x: number, y: number, tileData?: TileData) {
+    if (!tileData || tileData.type !== 'soil') return;
+
+    switch (this.selectedTool) {
+      case '播種':
+        this.showPlantMenu(x, y, tileData);
+        break;
+      case '澆水':
+        this.waterTile(x, y, tileData);
+        break;
+      case '收成':
+        this.harvestTile(x, y, tileData);
+        break;
+    }
+  }
+
+  private showPlantMenu(x: number, y: number, tileData: TileData) {
+    if (tileData.state !== 'empty') {
+      this.showMessage('這格已經有東西了！');
+      return;
+    }
+
+    // 創建種植選單
+    const menuContainer = this.add.container(this.tiles.get(`${x},${y}`)?.x || 0, (this.tiles.get(`${x},${y}`)?.y || 0) - 40);
+    menuContainer.setDepth(300);
+
+    const menuBg = this.add.graphics();
+    menuBg.fillStyle(0xF5DEB3, 1);
+    menuBg.fillRoundedRect(-60, -30, 120, 80, 5);
+    menuBg.lineStyle(3, 0x5C3D2E, 1);
+    menuBg.strokeRoundedRect(-60, -30, 120, 80, 5);
+    menuContainer.add(menuBg);
+
+    const titleText = this.add.text(0, -15, '選擇種子', {
+      fontSize: '12px',
+      fontFamily: 'Cubic 11, Microsoft JhengHei',
+      color: '#5C3D2E'
+    });
+    titleText.setOrigin(0.5);
+    menuContainer.add(titleText);
+
+    const crops = [
+      { id: 1, name: '小麥', time: '30秒', price: 5 },
+      { id: 2, name: '玉米', time: '60秒', price: 15 },
+      { id: 3, name: '番茄', time: '180秒', price: 50 }
+    ];
+
+    crops.forEach((crop, idx) => {
+      const btnY = 5 + idx * 18;
+      const btnText = this.add.text(-50, btnY, `${crop.name} (${crop.time})`, {
+        fontSize: '10px',
+        fontFamily: 'Cubic 11, Microsoft JhengHei',
+        color: '#228B22'
+      });
+      btnText.setInteractive({ useHandCursor: true });
+      btnText.on('pointerdown', () => {
+        this.plantCrop(x, y, crop.id);
+        menuContainer.destroy();
+      });
+      menuContainer.add(btnText);
+    });
+
+    // 點擊其他地方關閉
+    this.time.delayedCall(100, () => {
+      this.input.once('pointerdown', () => {
+        menuContainer.destroy();
+      });
+    });
+  }
+
+  private async plantCrop(x: number, y: number, cropId: number) {
+    const crop = this.crops.find(c => c.id === cropId);
+    if (!crop) return;
+
+    const now = Date.now();
+    const tileData: TileData = {
+      x,
+      y,
+      type: 'soil',
+      cropId,
+      plantedAt: now,
+      finishAt: now + crop.growTimeSec * 1000,
+      state: 'growing'
+    };
+
+    this.farmTiles.set(`${x},${y}`, tileData);
+    this.updateTileDisplay(x, y, tileData);
+
+    this.showMessage(`種植了${crop.nameZhTw}！`);
+  }
+
+  private updateTileDisplay(x: number, y: number, tileData: TileData) {
+    const tile = this.tiles.get(`${x},${y}`);
+    if (!tile) return;
+
+    // 清除舊的作物圖示
+    const existingCrop = tile.getAt(1);
+    if (existingCrop) {
+      existingCrop.destroy();
+    }
+
+    if (tileData.state === 'growing' || tileData.state === 'ready') {
+      const crop = this.crops.find(c => c.id === tileData.cropId);
+      if (crop) {
+        const cropSprite = this.add.image(TILE_SIZE / 2, TILE_SIZE / 2, crop.sprite);
+        cropSprite.setScale(0.8);
+        tile.add(cropSprite);
+
+        // 如果成熟，添加閃爍動畫
+        if (tileData.state === 'ready') {
+          this.tweens.add({
+            targets: cropSprite,
+            alpha: 0.6,
+            duration: 500,
+            yoyo: true,
+            repeat: -1
+          });
+        }
+      }
+    }
+  }
+
+  private waterTile(x: number, y: number, tileData: TileData) {
+    if (tileData.state !== 'growing') {
+      this.showMessage('這裡不需要澆水！');
+      return;
+    }
+    this.showMessage('澆水成功！');
+  }
+
+  private async harvestTile(x: number, y: number, tileData: TileData) {
+    if (tileData.state !== 'ready') {
+      if (tileData.state === 'growing') {
+        const remaining = Math.max(0, (tileData.finishAt || 0) - Date.now());
+        const seconds = Math.ceil(remaining / 1000);
+        this.showMessage(`還需要 ${seconds} 秒才能收成！`);
+      } else {
+        this.showMessage('這裡沒有東西可以收成！');
+      }
+      return;
+    }
+
+    const crop = this.crops.find(c => c.id === tileData.cropId);
+    if (!crop) return;
+
+    // 收成動畫
+    const tile = this.tiles.get(`${x},${y}`);
+    if (tile) {
+      const cropSprite = tile.getAt(1) as Phaser.GameObjects.Image;
+      if (cropSprite) {
+        this.tweens.add({
+          targets: cropSprite,
+          y: cropSprite.y - 30,
+          alpha: 0,
+          scale: 1.5,
+          duration: 500,
+          onComplete: () => {
+            cropSprite.destroy();
+          }
+        });
+      }
+    }
+
+    // 重置土地狀態
+    const newTileData: TileData = {
+      ...tileData,
+      cropId: undefined,
+      plantedAt: undefined,
+      finishAt: undefined,
+      state: 'empty'
+    };
+    this.farmTiles.set(`${x},${y}`, newTileData);
+
+    this.showMessage(`收成成功！獲得 ${crop.sellPrice} 金幣和 ${crop.exp} 經驗！`);
+  }
+
+  private showMessage(text: string) {
+    const msgBox = this.add.container(400, 250);
+    msgBox.setDepth(500);
+
+    const msgBg = this.add.graphics();
+    msgBg.fillStyle(0x5C3D2E, 0.95);
+    msgBg.fillRoundedRect(-120, -25, 240, 50, 8);
+    msgBox.add(msgBg);
+
+    const msgText = this.add.text(0, 0, text, {
+      fontSize: '16px',
+      fontFamily: 'Cubic 11, Microsoft JhengHei',
+      color: '#FFFFFF',
+      align: 'center'
+    });
+    msgText.setOrigin(0.5);
+    msgBox.add(msgText);
+
+    this.tweens.add({
+      targets: msgBox,
+      alpha: 0,
+      y: msgBox.y - 20,
+      duration: 2000,
+      ease: 'Power2',
+      onComplete: () => {
+        msgBox.destroy();
+      }
+    });
+  }
+
+  private clearSelection() {
+    if (this.selectedTile) {
+      const selImg = this.selectedTile.getAt(0);
+      if (selImg instanceof Phaser.GameObjects.Image) {
+        selImg.setVisible(false);
+      }
+      this.selectedTile = null;
+    }
+  }
+
+  private loadCrops() {
+    // 從共享常量載入作物資料
+    this.crops = [
+      {
+        id: 1,
+        nameZhTw: '小麥',
+        growTimeSec: 30,
+        sellPrice: 5,
+        exp: 10,
+        sprite: 'crop_wheat'
+      },
+      {
+        id: 2,
+        nameZhTw: '玉米',
+        growTimeSec: 60,
+        sellPrice: 15,
+        exp: 20,
+        sprite: 'crop_corn'
+      },
+      {
+        id: 3,
+        nameZhTw: '番茄',
+        growTimeSec: 180,
+        sellPrice: 50,
+        exp: 60,
+        sprite: 'crop_tomato'
+      },
+      {
+        id: 4,
+        nameZhTw: '草莓',
+        growTimeSec: 120,
+        sellPrice: 30,
+        exp: 40,
+        sprite: 'crop_strawberry'
+      }
+    ];
+  }
+
+  private loadFarmTiles() {
+    // 從伺服器載入農場狀態
+    // TODO: API 呼叫
+  }
+
+  update() {
+    // 檢查作物成熟狀態（使用時間戳，不使用 setInterval）
+    const now = Date.now();
+    this.farmTiles.forEach((tileData, key) => {
+      if (tileData.state === 'growing' && tileData.finishAt) {
+        if (now > tileData.finishAt) {
+          tileData.state = 'ready';
+          const [x, y] = key.split(',').map(Number);
+          this.updateTileDisplay(x, y, tileData);
+        }
+      }
+    });
+  }
+}
