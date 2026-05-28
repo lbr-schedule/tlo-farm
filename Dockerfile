@@ -21,4 +21,4 @@ RUN pnpm -r --parallel --filter='@tlo-farm/client' run build
 
 EXPOSE 3001
 
-CMD ["node", "node_modules/.bin/tsx", "apps/server/src/index.ts"]
+CMD ["pnpm", "exec", "tsx", "apps/server/src/index.ts"]
