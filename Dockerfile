@@ -13,7 +13,7 @@ COPY apps/server/package.json apps/server/
 COPY packages/database/package.json packages/database/
 COPY packages/shared/package.json packages/shared/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 COPY . .
 
