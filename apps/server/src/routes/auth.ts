@@ -121,6 +121,9 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
+    // DEBUG: Log registration attempt
+    console.log('[DEBUG] Register attempt:', { account, nickname, email });
+
     const passwordHash = await bcrypt.hash(password, 10);
     const now = Date.now();
 
