@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import authRouter from './routes/auth';
 import { authMiddleware } from './middleware/auth';
 import farmRouter from './routes/farm';
@@ -29,6 +30,14 @@ app.use('/api/auth', authRouter);
 app.use('/api/farm', authMiddleware, farmRouter);
 app.use('/api/shop', authMiddleware, shopRouter);
 app.use('/api/inventory', authMiddleware, inventoryRouter);
+
+// Serve client static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../../client/dist')));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
+  });
+}
 
 // 錯誤處理
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
