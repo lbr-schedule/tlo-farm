@@ -110,7 +110,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     const existing = await db.execute(
-      'SELECT id FROM users WHERE account = ?',
+      'SELECT id FROM users WHERE account = $1',
       [account]
     );
 
@@ -129,8 +129,8 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const insertResult = await db.execute(
       `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at)
-       VALUES (?, ?, ?, ?, 1, 0, 500, ?, ?)`,
-      [account, passwordHash, nickname, email || null, 1, 0, 500, now, now]
+       VALUES ($1, $2, $3, $4, 1, 0, 500, $5, $6)`,
+      [account, passwordHash, nickname, email || null, now, now]
     );
 
     // Get the inserted user's ID from lastInsertRowid, then query for full data
