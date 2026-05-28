@@ -130,8 +130,21 @@ router.post('/register', async (req: Request, res: Response) => {
       [account, passwordHash, nickname, email || null, now, now]
     );
 
-    const insertRows = insertResult.rows as { id: number; account: string; nickname: string; level: number; exp: number; gold: number }[];
-    const newUser = insertRows[0];
+    // Get the inserted user's ID from lastInsertRowid, then query for full data
+    const newUserId = Number(insertResult.lastInsertRowid);
+    if (!newUserId) {
+      return res.status(500).json({
+        success: false,
+        message: '創建用戶失敗'
+      });
+    }
+
+    const userResult = await db.execute(
+      'SELECT * FROM users WHERE id = ?',
+      [newUserId]
+    );
+    const userRows = userResult.rows as User[];
+    const newUser = userRows[0];
 
     if (!newUser) {
       return res.status(500).json({
