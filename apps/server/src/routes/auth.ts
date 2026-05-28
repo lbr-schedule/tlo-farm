@@ -118,42 +118,29 @@ router.post('/register', async (req: Request, res: Response) => {
 
     try {
       // First, check the table structure
-      const schemaResult = await db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
-      console.log('[DEBUG] Users table schema:', JSON.stringify(schemaResult.rows));
 
       // Test simple INSERT with hardcoded values
-      const testResult = await db.execute(
         `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at)
          VALUES ('testhardcode', 'hash123', 'nick', null, 1, 0, 500, ${now}, ${now})`
       );
-      console.log('[DEBUG] Hardcode INSERT success, lastInsertRowid:', testResult.lastInsertRowid);
     } catch (e: any) {
-      console.log('[DEBUG] Hardcode INSERT failed:', e.message);
-      console.log('[DEBUG] Full error:', JSON.stringify(e));
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const emailValue = email || null;
 
     const insertResult = await db.execute(
       `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [account, passwordHash, nickname, emailValue, 1, 0, 500, now, now]
     );
 
     // Get the inserted user's ID from lastInsertRowid, then query for full data
-    const newUserId = Number(insertResult.lastInsertRowid);
-    if (!newUserId) {
       return res.status(500).json({
         success: false,
         message: '創建用戶失敗'
       });
     }
 
-    const userResult = await db.execute('SELECT * FROM users WHERE id = ?', [newUserId]
     );
-    console.log('[DEBUG] userResult:', JSON.stringify(userResult));
-    const userRows = userResult.rows as User[];
     const newUser = userRows[0];
 
     if (!newUser) {
@@ -223,10 +210,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    const userResult = await db.execute('SELECT * FROM users WHERE id = ?', [tokenRecord.user_id]
     );
 
-    const userRows = userResult.rows as User[];
     const user = userRows[0];
 
     if (!user) {
