@@ -121,11 +121,12 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    // DEBUG: Log registration attempt
-    console.log('[DEBUG] Register attempt:', { account, nickname, email });
-
     const passwordHash = await bcrypt.hash(password, 10);
     const now = Date.now();
+    console.log('[DEBUG] SQL params:', JSON.stringify({
+      sql: 'INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES ($1, $2, $3, $4, 1, 0, 500, $5, $6)',
+      params: [account, passwordHash, nickname, email || null, now, now]
+    }));
 
     const insertResult = await db.execute(
       `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at)
