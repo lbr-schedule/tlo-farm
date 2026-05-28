@@ -25,4 +25,4 @@ RUN pnpm -r --parallel --filter='@tlo-farm/client' run build
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "pnpm --filter @tlo-farm/server exec tsx apps/server/src/index.ts"]
+CMD ["sh", "-c", "pnpm --filter @tlo-farm/server exec tsx src/index.ts"]
