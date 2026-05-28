@@ -109,10 +109,10 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const existing = await db.execute(
-      'SELECT id FROM users WHERE account = $1',
-      [account]
-    );
+    const existing = await db.execute({
+      sql: 'SELECT id FROM users WHERE account = ?',
+      args: [account]
+    });
 
     if ((existing.rows as User[]).length > 0) {
       return res.status(409).json({
@@ -141,11 +141,12 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const insertResult = await db.execute(
-      `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at)
-       VALUES ($1, $2, $3, $4, 1, 0, 500, $5, $6)`,
-      [account, passwordHash, nickname, email || null, now, now]
-    );
+    const emailValue = email || null;
+
+    const insertResult = await db.execute({
+      sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [account, passwordHash, nickname, emailValue, 1, 0, 500, now, now]
+    });
 
     // Get the inserted user's ID from lastInsertRowid, then query for full data
     const newUserId = Number(insertResult.lastInsertRowid);
