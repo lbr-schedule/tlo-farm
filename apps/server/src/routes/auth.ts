@@ -28,10 +28,8 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await db.execute({
-      sql: 'SELECT * FROM users WHERE account = ?',
-      args: [account]
-    });
+    const result = await db.execute('SELECT * FROM users WHERE account = ?', [account]
+    );
 
     const rows = result.rows as User[];
     const user = rows[0];
@@ -52,10 +50,7 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
-    await db.execute({
-      sql: 'UPDATE users SET last_login_at = ? WHERE id = ?',
-      args: [Date.now(), user.id]
-    });
+    await db.execute('UPDATE users SET last_login_at = ? WHERE id = ?', [Date.now(), user.id]);
 
     const accessToken = generateAccessToken(user);
     const refreshToken = await generateRefreshToken(user.id);
@@ -109,10 +104,8 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const existing = await db.execute({
-      sql: 'SELECT id FROM users WHERE account = ?',
-      args: [account]
-    });
+    const existing = await db.execute('SELECT id FROM users WHERE account = ?', [account]
+    );
 
     if ((existing.rows as User[]).length > 0) {
       return res.status(409).json({
@@ -143,15 +136,13 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const emailValue = email || null;
 
-    const insertResult = await db.execute({
-      sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [account, passwordHash, nickname, emailValue, 1, 0, 500, now, now]
-    });
-    console.log('[DEBUG] Insert result:', JSON.stringify(insertResult));
+    const insertResult = await db.execute(
+      `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [account, passwordHash, nickname, emailValue, 1, 0, 500, now, now]
+    );
 
     // Get the inserted user's ID from lastInsertRowid, then query for full data
     const newUserId = Number(insertResult.lastInsertRowid);
-    console.log('[DEBUG] newUserId:', newUserId);
     if (!newUserId) {
       return res.status(500).json({
         success: false,
@@ -159,10 +150,8 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const userResult = await db.execute({
-      sql: 'SELECT * FROM users WHERE id = ?',
-      args: [newUserId]
-    });
+    const userResult = await db.execute('SELECT * FROM users WHERE id = ?', [newUserId]
+    );
     console.log('[DEBUG] userResult:', JSON.stringify(userResult));
     const userRows = userResult.rows as User[];
     const newUser = userRows[0];
@@ -212,10 +201,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    const tokenResult = await db.execute({
-      sql: 'SELECT * FROM refresh_tokens WHERE token = ?',
-      args: [refreshToken]
-    });
+    const tokenResult = await db.execute('SELECT * FROM refresh_tokens WHERE token = ?', [refreshToken]
+    );
 
     const tokenRows = tokenResult.rows as { id: number; user_id: number; expires_at: number }[];
     const tokenRecord = tokenRows[0];
@@ -228,20 +215,16 @@ router.post('/refresh', async (req: Request, res: Response) => {
     }
 
     if (Date.now() > tokenRecord.expires_at) {
-      await db.execute({
-        sql: 'DELETE FROM refresh_tokens WHERE id = ?',
-        args: [tokenRecord.id]
-      });
+      await db.execute('DELETE FROM refresh_tokens WHERE id = ?', [tokenRecord.id]
+      );
       return res.status(401).json({
         success: false,
         message: '刷新令牌已過期，請重新登入'
       });
     }
 
-    const userResult = await db.execute({
-      sql: 'SELECT * FROM users WHERE id = ?',
-      args: [tokenRecord.user_id]
-    });
+    const userResult = await db.execute('SELECT * FROM users WHERE id = ?', [tokenRecord.user_id]
+    );
 
     const userRows = userResult.rows as User[];
     const user = userRows[0];
@@ -253,10 +236,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    await db.execute({
-      sql: 'DELETE FROM refresh_tokens WHERE id = ?',
-      args: [tokenRecord.id]
-    });
+    await db.execute('DELETE FROM refresh_tokens WHERE id = ?', [tokenRecord.id]
+    );
 
     const newAccessToken = generateAccessToken(user);
     const newRefreshToken = await generateRefreshToken(user.id);
@@ -282,10 +263,8 @@ router.post('/logout', async (req: Request, res: Response) => {
     const { refreshToken }: { refreshToken?: string } = req.body;
 
     if (refreshToken) {
-      await db.execute({
-        sql: 'DELETE FROM refresh_tokens WHERE token = ?',
-        args: [refreshToken]
-      });
+      await db.execute('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken]
+      );
     }
 
     return res.json({
@@ -326,10 +305,8 @@ router.get('/me', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await db.execute({
-      sql: 'SELECT * FROM users WHERE id = ?',
-      args: [payload.userId]
-    });
+    const result = await db.execute('SELECT * FROM users WHERE id = ?', [payload.userId]
+    );
 
     const rows = result.rows as User[];
     const user = rows[0];
@@ -376,10 +353,7 @@ async function generateRefreshToken(userId: number): Promise<string> {
   const token = require('crypto').randomBytes(64).toString('hex');
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
 
-  await db.execute({
-      sql: 'INSERT INTO refresh_tokens (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)',
-      args: [userId, token, expiresAt, Date.now()]
-    });
+  await db.execute('INSERT INTO refresh_tokens (user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?)', [userId, token, expiresAt, Date.now()]);
 
   return token;
 }
