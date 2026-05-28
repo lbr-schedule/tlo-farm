@@ -1,12 +1,11 @@
-import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client';
+import { createClient, type Client } from '@libsql/client';
 
-const client = createClient({
+const client: Client = createClient({
   url: process.env.DATABASE_URL || '',
   authToken: process.env.DATABASE_AUTH_TOKEN
 });
 
-// Don't pass schema as second argument - it triggers drizzle's migration check
-export const db = drizzle(client);
+export { client as db };
 
-export * from './schema';
+export const usersTableName = 'users';
+export const refreshTokensTableName = 'refresh_tokens';
