@@ -16,6 +16,17 @@ interface User {
   gold: number;
 }
 
+// Debug endpoint to check environment variables
+router.get('/debug-env', (req: Request, res: Response) => {
+  res.json({
+    farmDbUrl: process.env.FARM_DATABASE_URL || 'NOT_SET',
+    hasFarmToken: !!process.env.FARM_DATABASE_AUTH_TOKEN,
+    farmTokenPrefix: (process.env.FARM_DATABASE_AUTH_TOKEN || '').substring(0, 30),
+    fallbackDbUrl: process.env.DATABASE_URL || 'NOT_SET',
+    hasFallbackToken: !!process.env.DATABASE_AUTH_TOKEN
+  });
+});
+
 // 登入
 router.post('/login', async (req: Request, res: Response) => {
   try {
