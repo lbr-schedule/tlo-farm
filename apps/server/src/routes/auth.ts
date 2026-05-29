@@ -116,32 +116,22 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const now = Date.now();
 
-    try {
-      // First, check the table structure
-
-      // Test simple INSERT with hardcoded values
-        `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at)
-         VALUES ('testhardcode', 'hash123', 'nick', null, 1, 0, 500, ${now}, ${now})`
-      );
-    } catch (e: any) {
-    }
-
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const insertResult = await db.execute({
+      sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [account, passwordHash, nickname, email || null, 1, 0, 500, now, now]
+    });
 
-    const insertResult = await db.execute(
-      `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-
-    // Get the inserted user's ID from lastInsertRowid, then query for full data
+    if (!insertResult.rowsAffected) {
       return res.status(500).json({
         success: false,
         message: '創建用戶失敗'
       });
     }
 
-    );
-    const newUser = userRows[0];
+    const userRows = await db.execute('SELECT * FROM users WHERE id = last_insert_rowid()');
+    const newUser = (userRows.rows as any[])[0];
 
     if (!newUser) {
       return res.status(500).json({
