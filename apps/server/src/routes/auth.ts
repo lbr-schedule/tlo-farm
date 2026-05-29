@@ -200,8 +200,6 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    );
-
     const user = userRows[0];
 
     if (!user) {
@@ -211,9 +209,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    await db.execute('DELETE FROM refresh_tokens WHERE id = ?', [tokenRecord.id]
-    );
-
+    await db.execute('DELETE FROM refresh_tokens WHERE id = ?', [tokenRecord.id]);
     const newAccessToken = generateAccessToken(user);
     const newRefreshToken = await generateRefreshToken(user.id);
 
@@ -238,8 +234,7 @@ router.post('/logout', async (req: Request, res: Response) => {
     const { refreshToken }: { refreshToken?: string } = req.body;
 
     if (refreshToken) {
-      await db.execute('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken]
-      );
+      await db.execute('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken]);
     }
 
     return res.json({
