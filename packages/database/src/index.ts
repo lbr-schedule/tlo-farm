@@ -6,11 +6,19 @@ const client = createClient({
 });
 
 // Wrap client.execute to convert rows from array-of-arrays to array-of-objects
+// and handle both simple execute(sql, args) and object execute({sql, args}) formats
 const db = {
-  async execute(sql: string, args?: any[]) {
-    const result = args !== undefined
-      ? await client.execute(sql, args)
-      : await client.execute(sql);
+  async execute(sqlOrConfig: string | { sql: string; args?: any[] }, args?: any[]) {
+    let result;
+    if (typeof sqlOrConfig === 'object' && sqlOrConfig !== null && 'sql' in sqlOrConfig) {
+      // Object format: { sql, args }
+      result = await client.execute(sqlOrConfig.sql, sqlOrConfig.args ?? []);
+    } else {
+      // Simple format: execute(sql, args)
+      result = args !== undefined
+        ? await client.execute(sqlOrConfig as string, args)
+        : await client.execute(sqlOrConfig as string);
+    }
     if (result.rows && result.columns) {
       const mappedRows = result.rows.map(row => {
         const obj: Record<string, any> = {};
