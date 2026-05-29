@@ -120,10 +120,10 @@ router.post('/register', async (req: Request, res: Response) => {
 
     console.log('[DEBUG] insert args:', JSON.stringify({ account, passwordHash, nickname, email: email || null, level: 1, exp: 0, gold: 500, now, now }));
 
-    const insertResult = await db.execute({
-      sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [account, passwordHash, nickname, email || null, 1, 0, 500, now, now]
-    });
+    const insertResult = await db.execute(
+      `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [account, passwordHash, nickname, email || null, 1, 0, 500, now, now]
+    );
 
     if (!insertResult.rowsAffected) {
       return res.status(500).json({
