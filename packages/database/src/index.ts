@@ -18,6 +18,7 @@ const db = {
       actualArgs = sqlOrConfig.args ?? [];
       console.log('[DEBUG] wrapper using object format, actualArgs:', JSON.stringify(actualArgs));
       result = await client.execute(sql, actualArgs);
+    console.log('[DEBUG] client.execute about to run with sql:', sql, 'args:', JSON.stringify(actualArgs));
     } else {
       sql = sqlOrConfig as string;
       actualArgs = args;
