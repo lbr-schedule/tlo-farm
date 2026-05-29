@@ -10,14 +10,20 @@ const client = createClient({
 const db = {
   async execute(sqlOrConfig: string | { sql: string; args?: any[] }, args?: any[]) {
     let result;
+    let actualArgs: any[] | undefined;
+    let sql: string;
+    console.log('[DEBUG] wrapper received:', JSON.stringify({ sqlOrConfig, args }));
     if (typeof sqlOrConfig === 'object' && sqlOrConfig !== null && 'sql' in sqlOrConfig) {
-      // Object format: { sql, args }
-      result = await client.execute(sqlOrConfig.sql, sqlOrConfig.args ?? []);
+      sql = sqlOrConfig.sql;
+      actualArgs = sqlOrConfig.args ?? [];
+      console.log('[DEBUG] wrapper using object format, actualArgs:', JSON.stringify(actualArgs));
+      result = await client.execute(sql, actualArgs);
     } else {
-      // Simple format: execute(sql, args)
+      sql = sqlOrConfig as string;
+      actualArgs = args;
       result = args !== undefined
-        ? await client.execute(sqlOrConfig as string, args)
-        : await client.execute(sqlOrConfig as string);
+        ? await client.execute(sql, args)
+        : await client.execute(sql);
     }
     if (result.rows && result.columns) {
       const mappedRows = result.rows.map(row => {
