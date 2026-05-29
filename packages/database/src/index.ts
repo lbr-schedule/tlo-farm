@@ -1,10 +1,10 @@
 // Bypass @libsql/client due to NULL parameter issue in server environments
-// Use raw fetch to call Turso HTTP API directly
+// Use raw fetch to call Turso HTTP API v2 directly
 
 const dbUrl = process.env.FARM_DATABASE_URL || process.env.DATABASE_URL || '';
 const authToken = process.env.FARM_DATABASE_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || '';
 
-function getDbInfo() {
+function getDbHostAndPath() {
   const url = dbUrl.replace('libsql://', '');
   const slashIdx = url.indexOf('/');
   const host = slashIdx >= 0 ? url.substring(0, slashIdx) : url;
@@ -12,9 +12,55 @@ function getDbInfo() {
   return { host, path };
 }
 
+// Convert JS value to Turso tagged format
+function toTursoValue(val: any): any {
+  if (val === null || val === undefined) {
+    return { type: 'null' };
+  }
+  if (typeof val === 'number') {
+    if (Number.isInteger(val)) {
+      return { type: 'integer', value: String(val) };
+    }
+    return { type: 'real', value: String(val) };
+  }
+  if (typeof val === 'string') {
+    return { type: 'text', value: val };
+  }
+  if (typeof val === 'boolean') {
+    return { type: 'integer', value: val ? '1' : '0' };
+  }
+  return { type: 'text', value: String(val) };
+}
+
+// Convert Turso result rows back to normal format
+function parseTursoRows(cols: string[], rows: any[][]) {
+  return rows.map(row => {
+    const obj: Record<string, any> = {};
+    cols.forEach((col, i) => {
+      const cell = row[i];
+      if (cell === null || cell === undefined || (typeof cell === 'object' && cell.type === 'null')) {
+        obj[col] = null;
+      } else if (typeof cell === 'object' && cell.type === 'text') {
+        obj[col] = cell.value;
+      } else if (typeof cell === 'object' && cell.type === 'integer') {
+        obj[col] = parseInt(cell.value, 10);
+      } else if (typeof cell === 'object' && cell.type === 'real') {
+        obj[col] = parseFloat(cell.value);
+      } else if (typeof cell === 'object' && cell.type === 'blob') {
+        obj[col] = Buffer.from(cell.value, 'base64');
+      } else {
+        obj[col] = cell;
+      }
+    });
+    return obj;
+  });
+}
+
 async function rawExecute(sql: string, args: any[] = []) {
-  const { host, path } = getDbInfo();
-  console.log('[RAW-FETCH] sql:', sql, 'args:', JSON.stringify(args));
+  const { host } = getDbHostAndPath();
+  const tursoArgs = args.map(toTursoValue);
+  
+  console.log('[RAW-FETCH] sql:', sql, 'tursoArgs:', JSON.stringify(tursoArgs));
   
   const response = await fetch(`https://${host}/v2/pipeline`, {
     method: 'POST',
@@ -25,7 +71,7 @@ async function rawExecute(sql: string, args: any[] = []) {
     body: JSON.stringify({
       requests: [{
         type: 'execute',
-        stmt: { sql, args }
+        stmt: { sql, args: tursoArgs }
       }]
     })
   });
@@ -37,19 +83,24 @@ async function rawExecute(sql: string, args: any[] = []) {
     throw new Error(errMsg);
   }
   
-  const result = data.results?.[0];
-  console.log('[RAW-FETCH] result:', JSON.stringify(result));
+  const result = data.results?.[0]?.response?.result;
+  console.log('[RAW-FETCH] result cols:', result?.cols, 'rows:', result?.rows?.length);
+  
+  const cols = result?.cols?.map((c: any) => c.name) || [];
+  const rows = parseTursoRows(cols, result?.rows || []);
   
   return {
-    rows: result?.rows || [],
-    columns: result?.columns || [],
-    rowsAffected: result?.rows_affected || 0
+    rows,
+    columns: cols,
+    rowsAffected: result?.affected_row_count || 0
   };
 }
 
 async function rawQuery(sql: string, args: any[] = []) {
-  const { host, path } = getDbInfo();
-  console.log('[RAW-FETCH-QUERY] sql:', sql, 'args:', JSON.stringify(args));
+  const { host } = getDbHostAndPath();
+  const tursoArgs = args.map(toTursoValue);
+  
+  console.log('[RAW-FETCH-QUERY] sql:', sql, 'tursoArgs:', JSON.stringify(tursoArgs));
   
   const response = await fetch(`https://${host}/v2/pipeline`, {
     method: 'POST',
@@ -59,8 +110,8 @@ async function rawQuery(sql: string, args: any[] = []) {
     },
     body: JSON.stringify({
       requests: [{
-        type: 'query',
-        stmt: { sql, args }
+        type: 'execute',
+        stmt: { sql, args: tursoArgs }
       }]
     })
   });
@@ -72,11 +123,11 @@ async function rawQuery(sql: string, args: any[] = []) {
     throw new Error(errMsg);
   }
   
-  const result = data.results?.[0];
-  return {
-    rows: result?.rows || [],
-    columns: result?.columns || []
-  };
+  const result = data.results?.[0]?.response?.result;
+  const cols = result?.cols?.map((c: any) => c.name) || [];
+  const rows = parseTursoRows(cols, result?.rows || []);
+  
+  return { rows, columns: cols };
 }
 
 const db = {
@@ -92,22 +143,8 @@ const db = {
       actualArgs = args ?? [];
     }
     
-    console.log('[DB] execute called with sql:', sql, 'args:', JSON.stringify(actualArgs));
-    
-    const result = await rawExecute(sql, actualArgs);
-    
-    if (result.rows.length > 0 && result.columns.length > 0) {
-      const mappedRows = result.rows.map((row: any[]) => {
-        const obj: Record<string, any> = {};
-        result.columns.forEach((col: string, i: number) => {
-          obj[col] = row[i];
-        });
-        return obj;
-      });
-      return { ...result, rows: mappedRows };
-    }
-    
-    return result;
+    console.log('[DB] execute called with sql:', sql, 'actualArgs:', JSON.stringify(actualArgs));
+    return rawExecute(sql, actualArgs);
   },
   
   async query(sql: string, args?: any[]): Promise<any> {
