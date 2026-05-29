@@ -118,6 +118,8 @@ router.post('/register', async (req: Request, res: Response) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    console.log('[DEBUG] insert args:', JSON.stringify({ account, passwordHash, nickname, email: email || null, level: 1, exp: 0, gold: 500, now, now }));
+
     const insertResult = await db.execute({
       sql: `INSERT INTO users (account, password_hash, nickname, email, level, exp, gold, created_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [account, passwordHash, nickname, email || null, 1, 0, 500, now, now]
