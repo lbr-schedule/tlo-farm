@@ -1,8 +1,8 @@
 import { createClient } from '@libsql/client';
 
 const client = createClient({
-  url: process.env.DATABASE_URL || '',
-  authToken: process.env.DATABASE_AUTH_TOKEN
+  url: process.env.FARM_DATABASE_URL || process.env.DATABASE_URL || '',
+  authToken: process.env.FARM_DATABASE_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN
 });
 
 // Wrap client.execute to convert rows from array-of-arrays to array-of-objects
