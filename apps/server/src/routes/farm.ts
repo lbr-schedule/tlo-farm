@@ -1,9 +1,12 @@
 import { Router, Response } from 'express';
-import { eq, and } from 'drizzle-orm';
-import { db, users, crops, farmTiles, inventories } from '@tlo-farm/database';
+import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
 const router = Router();
+
+// 欄位名稱對應（資料庫底層底線命名）
+const USERS_FIELDS = 'id, account, nickname, email, level, exp, gold, created_at as createdAt, last_login_at as lastLoginAt';
+const TILES_FIELDS = 'id, user_id as userId, x, y, crop_id as cropId, planted_at as plantedAt, finish_at as finishAt, state';
 
 // 取得農場狀態
 router.get('/status', async (req: AuthRequest, res: Response) => {
@@ -13,17 +16,19 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: '未授權' });
     }
 
-    // 取得玩家資料
-    const user = await db.select().from(users).where(eq(users.id, userId)).get();
+    const userRows = await db.execute(
+      `SELECT ${USERS_FIELDS} FROM users WHERE id = ?`, [userId]
+    );
+    const user = userRows.rows[0];
     if (!user) {
       return res.status(404).json({ success: false, message: '用戶不存在' });
     }
 
-    // 取得農場土地狀態
-    const tiles = await db.select().from(farmTiles).where(eq(farmTiles.userId, userId)).all();
+    const tileRows = await db.execute(
+      `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ?`, [userId]
+    );
 
-    // 轉換時間戳為毫秒
-    const tilesWithTime = tiles.map(tile => ({
+    const tilesWithTime = tileRows.rows.map((tile: any) => ({
       id: tile.id,
       x: tile.x,
       y: tile.y,
@@ -61,23 +66,28 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
 
     const { x, y, cropId } = req.body;
 
-    // 驗證座標
     if (x === undefined || y === undefined || cropId === undefined) {
       return res.status(400).json({ success: false, message: '缺少必要參數' });
     }
 
-    if (x < 0 || x >= 10 || y < 0 || y >= 10) {
+    if (x < 0 || x >= 16 || y < 0 || y >= 16) {
       return res.status(400).json({ success: false, message: '無效的座標' });
     }
 
     // 檢查作物是否存在
-    const crop = await db.select().from(crops).where(eq(crops.id, cropId)).get();
+    const cropRows = await db.execute(
+      `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp FROM crops WHERE id = ?`, [cropId]
+    );
+    const crop = cropRows.rows[0];
     if (!crop) {
       return res.status(404).json({ success: false, message: '作物不存在' });
     }
 
     // 檢查玩家金幣是否足夠
-    const user = await db.select().from(users).where(eq(users.id, userId)).get();
+    const userRows = await db.execute(
+      `SELECT id, gold FROM users WHERE id = ?`, [userId]
+    );
+    const user = userRows.rows[0];
     if (!user) {
       return res.status(404).json({ success: false, message: '用戶不存在' });
     }
@@ -87,68 +97,58 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
     }
 
     // 檢查土地是否已有作物
-    const existingTile = await db.select().from(farmTiles)
-      .where(and(
-        eq(farmTiles.userId, userId),
-        eq(farmTiles.x, x),
-        eq(farmTiles.y, y)
-      ))
-      .get();
+    const existingRows = await db.execute(
+      `SELECT id, state FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
+    );
+    const existingTile = existingRows.rows[0];
 
     if (existingTile && existingTile.state !== 'empty') {
       return res.status(400).json({ success: false, message: '這格已經有東西了' });
     }
 
-    // 計算生長時間
-    const now = new Date();
-    const finishAt = new Date(now.getTime() + crop.growTimeSec * 1000);
+    const now = Date.now();
+    const finishAt = now + crop.growTimeSec * 1000;
 
     // 扣除金幣
-    await db.update(users)
-      .set({ gold: user.gold - crop.buyPrice })
-      .where(eq(users.id, userId));
+    await db.execute(
+      `UPDATE users SET gold = gold - ? WHERE id = ?`, [crop.buyPrice, userId]
+    );
 
     // 更新或創建土地
     if (existingTile) {
-      await db.update(farmTiles)
-        .set({
-          cropId,
-          plantedAt: now,
-          finishAt,
-          state: 'growing'
-        })
-        .where(eq(farmTiles.id, existingTile.id));
+      await db.execute(
+        `UPDATE farm_tiles SET crop_id = ?, planted_at = ?, finish_at = ?, state = 'growing' WHERE id = ?`,
+        [cropId, now, finishAt, existingTile.id]
+      );
     } else {
-      await db.insert(farmTiles).values({
-        userId,
-        x,
-        y,
-        cropId,
-        plantedAt: now,
-        finishAt,
-        state: 'growing'
-      });
+      await db.execute(
+        `INSERT INTO farm_tiles (user_id, x, y, crop_id, planted_at, finish_at, state) VALUES (?, ?, ?, ?, ?, ?, 'growing')`,
+        [userId, x, y, cropId, now, finishAt]
+      );
     }
 
     // 更新後的玩家資料
-    const updatedUser = await db.select().from(users).where(eq(users.id, userId)).get();
+    const updatedRows = await db.execute(
+      `SELECT ${USERS_FIELDS} FROM users WHERE id = ?`, [userId]
+    );
+    const updatedUser = updatedRows.rows[0];
 
     return res.json({
       success: true,
       message: `種植了${crop.nameZhTw}！`,
       user: {
-        id: updatedUser!.id,
-        nickname: updatedUser!.nickname,
-        level: updatedUser!.level,
-        exp: updatedUser!.exp,
-        gold: updatedUser!.gold
+        id: updatedUser.id,
+        nickname: updatedUser.nickname,
+        level: updatedUser.level,
+        exp: updatedUser.exp,
+        gold: updatedUser.gold
       },
       tile: {
         x,
         y,
         cropId,
-        plantedAt: now.getTime(),
-        finishAt: finishAt.getTime(),
+        plantedAt: now,
+        finishAt,
         state: 'growing'
       }
     });
@@ -172,14 +172,10 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少座標' });
     }
 
-    // 取得土地資料
-    const tile = await db.select().from(farmTiles)
-      .where(and(
-        eq(farmTiles.userId, userId),
-        eq(farmTiles.x, x),
-        eq(farmTiles.y, y)
-      ))
-      .get();
+    const tileRows = await db.execute(
+      `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
+    );
+    const tile = tileRows.rows[0];
 
     if (!tile) {
       return res.status(404).json({ success: false, message: '土地不存在' });
@@ -198,14 +194,18 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '這格沒有東西可以收成' });
     }
 
-    // 取得作物資料
-    const crop = await db.select().from(crops).where(eq(crops.id, tile.cropId!)).get();
+    const cropRows = await db.execute(
+      `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice, exp FROM crops WHERE id = ?`, [tile.cropId]
+    );
+    const crop = cropRows.rows[0];
     if (!crop) {
       return res.status(404).json({ success: false, message: '作物資料不存在' });
     }
 
-    // 計算新經驗值和等級
-    const user = await db.select().from(users).where(eq(users.id, userId)).get();
+    const userRows = await db.execute(
+      `SELECT ${USERS_FIELDS} FROM users WHERE id = ?`, [userId]
+    );
+    const user = userRows.rows[0];
     if (!user) {
       return res.status(404).json({ success: false, message: '用戶不存在' });
     }
@@ -214,55 +214,44 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
     let newLevel = user.level;
     let leveledUp = false;
 
-    // 等級計算（每級需要的經驗）
     const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
     while (newLevel < expForLevel.length && newExp >= expForLevel[newLevel]) {
       newLevel++;
       leveledUp = true;
     }
 
-    // 更新玩家資料
-    await db.update(users)
-      .set({
-        gold: user.gold + crop.sellPrice,
-        exp: newExp,
-        level: newLevel
-      })
-      .where(eq(users.id, userId));
+    await db.execute(
+      `UPDATE users SET gold = gold + ?, exp = ?, level = ? WHERE id = ?`,
+      [crop.sellPrice, newExp, newLevel, userId]
+    );
 
-    // 重置土地
-    await db.update(farmTiles)
-      .set({
-        cropId: null,
-        plantedAt: null,
-        finishAt: null,
-        state: 'empty'
-      })
-      .where(eq(farmTiles.id, tile.id));
+    await db.execute(
+      `UPDATE farm_tiles SET crop_id = NULL, planted_at = NULL, finish_at = NULL, state = 'empty' WHERE id = ?`,
+      [tile.id]
+    );
 
-    // 增加道具到背包（作物）
-    const existingCrop = await db.select().from(inventories)
-      .where(and(
-        eq(inventories.userId, userId),
-        eq(inventories.itemType, 'crop'),
-        eq(inventories.itemId, crop.id)
-      ))
-      .get();
+    // 增加道具到背包
+    const invRows = await db.execute(
+      `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'crop' AND item_id = ?`,
+      [userId, crop.id]
+    );
+    const existingInv = invRows.rows[0];
 
-    if (existingCrop) {
-      await db.update(inventories)
-        .set({ amount: existingCrop.amount + 1 })
-        .where(eq(inventories.id, existingCrop.id));
+    if (existingInv) {
+      await db.execute(
+        `UPDATE inventories SET amount = amount + 1 WHERE id = ?`, [existingInv.id]
+      );
     } else {
-      await db.insert(inventories).values({
-        userId,
-        itemType: 'crop',
-        itemId: crop.id,
-        amount: 1
-      });
+      await db.execute(
+        `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, 1)`,
+        [userId, crop.id]
+      );
     }
 
-    const updatedUser = await db.select().from(users).where(eq(users.id, userId)).get();
+    const updatedRows = await db.execute(
+      `SELECT ${USERS_FIELDS} FROM users WHERE id = ?`, [userId]
+    );
+    const updatedUser = updatedRows.rows[0];
 
     return res.json({
       success: true,
@@ -275,11 +264,11 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       },
       leveledUp,
       user: {
-        id: updatedUser!.id,
-        nickname: updatedUser!.nickname,
-        level: updatedUser!.level,
-        exp: updatedUser!.exp,
-        gold: updatedUser!.gold
+        id: updatedUser.id,
+        nickname: updatedUser.nickname,
+        level: updatedUser.level,
+        exp: updatedUser.exp,
+        gold: updatedUser.gold
       },
       tile: {
         x,
@@ -307,13 +296,10 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少座標' });
     }
 
-    const tile = await db.select().from(farmTiles)
-      .where(and(
-        eq(farmTiles.userId, userId),
-        eq(farmTiles.x, x),
-        eq(farmTiles.y, y)
-      ))
-      .get();
+    const tileRows = await db.execute(
+      `SELECT id, state FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
+    );
+    const tile = tileRows.rows[0];
 
     if (!tile || tile.state === 'empty') {
       return res.status(400).json({ success: false, message: '這裡沒有作物' });
@@ -322,9 +308,6 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
     if (tile.state === 'ready') {
       return res.status(400).json({ success: false, message: '這裡的作物已經成熟了' });
     }
-
-    // 澆水可以減少剩餘時間（這裡簡化為不減少時間，只是標記已澆水）
-    // 實際遊戲中可以加入澆水加速邏輯
 
     return res.json({
       success: true,
@@ -339,21 +322,14 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
 // 查詢作物清單
 router.get('/crops', async (_req, res: Response) => {
   try {
-    const allCrops = await db.select().from(crops).all();
+    const cropRows = await db.execute(
+      `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp, sprite, required_level as requiredLevel FROM crops`
+    );
 
     return res.json({
       success: true,
       message: '成功',
-      crops: allCrops.map(crop => ({
-        id: crop.id,
-        nameZhTw: crop.nameZhTw,
-        growTimeSec: crop.growTimeSec,
-        sellPrice: crop.sellPrice,
-        buyPrice: crop.buyPrice,
-        exp: crop.exp,
-        sprite: crop.sprite,
-        requiredLevel: crop.requiredLevel
-      }))
+      crops: cropRows.rows
     });
   } catch (error) {
     console.error('查詢作物錯誤:', error);

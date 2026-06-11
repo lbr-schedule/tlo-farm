@@ -35,12 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (userData: UserProfile, token: string, refresh: string) => {
-    setUser(userData);
+    // Stable user object reference to prevent infinite re-render loops
+    const stableUser = { ...userData };
+    setUser(stableUser);
     setAccessToken(token);
     setRefreshToken(refresh);
     localStorage.setItem('accessToken', token);
     localStorage.setItem('refreshToken', refresh);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(stableUser));
   };
 
   const logout = async () => {

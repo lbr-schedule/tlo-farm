@@ -11,7 +11,7 @@ export default function LoginPage() {
   
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/game');
+      navigate('/farm');
     }
   }, [isAuthenticated, navigate]);
   
@@ -19,7 +19,9 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -36,12 +38,19 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setLoading(false);
+
+    // 確認密碼檢查（僅註冊時）
+    if (isRegister && password !== confirmPassword) {
+      setError('確認密碼與密碼不一致');
+      setLoading(false);
+      return;
+    }
 
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
       const body = isRegister
-        ? { account: username, email, password, nickname }
+        ? { account: username, email, password, nickname, inviteCode }
         : { account: username, password };
 
       const res = await fetch(endpoint, {
@@ -54,7 +63,7 @@ export default function LoginPage() {
 
       if (data.success) {
         login(data.user, data.accessToken, data.refreshToken);
-        navigate('/game');
+        navigate('/farm');
       } else {
         setError(data.message || '操作失敗');
       }
@@ -166,6 +175,30 @@ export default function LoginPage() {
           {isRegister && (
             <div style={{ animation: 'slideIn 0.4s ease-out 0.2s both' }}>
               <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>暱稱</label>
+                <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)}
+                  style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
+                  onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
+                  onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
+                  placeholder="遊戲中顯示的名字" required />
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>密碼</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
+                  onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
+                  onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
+                  placeholder="請輸入密碼" required />
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>確認密碼</label>
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
+                  onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
+                  onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
+                  placeholder="請再次輸入密碼" required />
+              </div>
+              <div style={{ marginBottom: 18 }}>
                 <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>電子郵件</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                   style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
@@ -174,24 +207,26 @@ export default function LoginPage() {
                   placeholder="請輸入 email" required />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>暱稱</label>
-                <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)}
+                <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>邀請碼（選填）</label>
+                <input type="text" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)}
                   style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
                   onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
                   onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
-                  placeholder="遊戲中顯示的名字" required />
+                  placeholder="選填，若有邀請碼請輸入" />
               </div>
             </div>
           )}
 
-          <div style={{ animation: 'slideIn 0.4s ease-out ' + (isRegister ? '0.3s' : '0.2s') + ' both' }}>
-            <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>密碼</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
-              onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
-              onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
-              placeholder="請輸入密碼" required />
-          </div>
+          {!isRegister && (
+            <div style={{ animation: 'slideIn 0.4s ease-out 0.2s both' }}>
+              <label style={{ display: 'block', color: '#4a3520', fontWeight: 'bold', marginBottom: 10, fontSize: 16, letterSpacing: '2px', textShadow: '1px 1px 0 #c0a080' }}>密碼</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                style={{ width: '100%', padding: '18px 16px', border: '5px solid #5c3d2e', background: '#fff', fontSize: 17, fontFamily: "'Cubic 11', sans-serif", outline: 'none', boxShadow: 'inset 5px 5px 0 #d4c4a8', transition: 'all 0.2s', borderRadius: '2px' }}
+                onFocus={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8, 0 0 0 4px #8b6243'}
+                onBlur={(e) => e.target.style.boxShadow = 'inset 5px 5px 0 #d4c4a8'}
+                placeholder="請輸入密碼" required />
+            </div>
+          )}
 
           {error && (
             <div style={{ color: '#8b0000', background: '#fff0f0', padding: '16px', border: '4px solid #8b0000', fontSize: 15, textAlign: 'center', animation: 'shake 0.5s ease-in-out' }}>

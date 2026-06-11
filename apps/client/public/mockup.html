@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T-LO Pixel Farm - MVP Mockup</title>
+<style>
+@font-face {
+  font-family: 'Cubic 11';
+  src: url('/Cubic11.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Cubic 11', sans-serif;
+  background: #79B95B;
+  min-height: 100vh;
+  overflow: hidden;
+  image-rendering: pixelated;
+  -webkit-image-rendering: pixelated;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─── GAME PAGE WRAPPER ─── */
+.game-page {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  background: #79B95B;
+  background-image: url('/assets/tile/grass_tiles/grass_07_07.png');
+  background-size: 32px 32px;
+  background-repeat: repeat;
+  overflow: hidden;
+}
+
+/* ─── TOP BAR ─── */
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 160px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* ─── PLAYER INFO PANEL ─── */
+.player-info {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  width: 320px;
+  height: 115px;
+  background-image: url('/assets/ui/ui_player_info .png');
+  background-size: 320px 115px;
+  background-repeat: no-repeat;
+  background-position: left top;
+  image-rendering: pixelated;
+  pointer-events: auto;
+}
+
+.player-info__avatar {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.player-info__avatar img {
+  width: 72px;
+  height: 72px;
+  image-rendering: pixelated;
+}
+
+.player-info__details {
+  position: absolute;
+  left: 100px;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-info__name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #3d2518;
+  line-height: 1.2;
+}
+
+.player-info__level {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #3d2518;
+}
+
+.player-info__exp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #3d2518;
+}
+
+.player-info__exp img,
+.player-info__level img,
+.currency-item img {
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+/* ─── CURRENCY BARS ─── */
+.currency-bar {
+  position: absolute;
+  top: 32px;
+  width: 240px;
+  height: 72px;
+  background-image: url('/assets/ui/ui_currency_bar.png');
+  background-size: 240px 72px;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.currency-bar--coin {
+  right: 260px;
+}
+
+.currency-bar--diamond {
+  right: 8px;
+}
+
+.currency-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.currency-item img {
+  image-rendering: pixelated;
+}
+
+.currency-item__value {
+  font-size: 18px;
+  font-weight: bold;
+  color: #3d2518;
+}
+
+/* ─── PHASER GAME AREA ─── */
+.phaser-container {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  transform: translateX(-50%);
+  width: 960px;
+  height: 600px;
+  z-index: 15;
+  overflow: hidden;
+}
+
+/* Grass background for the game area */
+.game-canvas-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('/assets/tile/grass_tiles/grass_07_07.png');
+  background-size: 32px 32px;
+  background-repeat: repeat;
+  image-rendering: pixelated;
+}
+
+/* ─── FARM AREA ─── */
+.farm-area {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  grid-template-rows: repeat(2, 100px);
+  gap: 8px;
+}
+
+/* ─── FARMLAND TILE ─── */
+.farmland {
+  width: 100px;
+  height: 100px;
+  background-image: url('/assets/tile/農地_初始狀態_32x32.png');
+  background-size: 100px 100px;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: none;
+}
+
+.farmland--selected {
+  box-shadow: 0 0 0 4px #FFD700, 0 0 0 6px #B8860B;
+}
+
+.farmland__crop {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.farmland__timer {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: 'Cubic 11', monospace;
+  pointer-events: none;
+}
+
+/* ─── PLAYER CHARACTER ─── */
+.player-char {
+  position: absolute;
+  bottom: 20px;
+  right: 60px;
+  width: 48px;
+  height: 64px;
+  image-rendering: pixelated;
+  z-index: 16;
+}
+
+/* ─── ACTION MENU ─── */
+.action-menu {
+  position: absolute;
+  bottom: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-image: url('/assets/ui/ui_window_frame.png');
+  background-size: 320px 160px;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  width: 320px;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 30;
+  padding: 16px;
+}
+
+.action-menu__title {
+  font-size: 14px;
+  color: #3d2518;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.action-menu__buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: transform 0.1s;
+}
+
+.action-btn:hover {
+  transform: scale(1.1);
+  background: rgba(255,255,255,0.3);
+}
+
+.action-btn img {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+}
+
+.action-btn__label {
+  font-size: 13px;
+  color: #3d2518;
+  font-weight: bold;
+}
+
+/* ─── HOTBAR ─── */
+.hotbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 760px;
+  height: 110px;
+  background-image: url('/assets/ui/ui_hotbar.png');
+  background-size: 760px 110px;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.hotbar__btn {
+  width: 152px;
+  height: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 16px;
+  padding-bottom: 18px;
+  cursor: pointer;
+  gap: 0;
+}
+
+.hotbar__btn img {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+  margin-bottom: auto;
+}
+
+.hotbar__btn span {
+  font-size: 13px;
+  color: #3d2518;
+  margin-top: auto;
+}
+
+/* ─── DECORATIVE: WOOD SIGN ─── */
+.wood-sign {
+  position: absolute;
+  right: 40px;
+  bottom: 100px;
+  image-rendering: pixelated;
+  z-index: 16;
+}
+
+/* ─── DEBUG BORDERS (toggleable) ─── */
+.debug-borders .player-info { border: 3px solid red !important; }
+.debug-borders .currency-bar { border: 3px solid blue !important; }
+.debug-borders .phaser-container { border: 3px solid purple !important; }
+.debug-borders .hotbar { border: 3px solid yellow !important; }
+.debug-borders .farmland { border: 2px solid white !important; }
+</style>
+</head>
+<body>
+
+<div id="root">
+
+ <!-- ═══════════════════════════════════════════
+ GAME PAGE WRAPPER
+  ═══════════════════════════════════════════ -->
+  <div class="game-page" id="gamePage">
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+
+      <!-- PLAYER INFO (red border) -->
+      <div class="player-info" id="playerInfo">
+        <div class="player-info__avatar">
+          <img src="/assets/icon/icon_player.png" alt="avatar">
+        </div>
+        <div class="player-info__details">
+          <div class="player-info__name">測試玩家</div>
+          <div class="player-info__level">
+            <img src="/assets/icon/icon_level.png" height="18" alt="Lv">
+            <span>Lv.1</span>
+          </div>
+          <div class="player-info__exp">
+            <img src="/assets/icon/icon_exp.png" height="18" alt="EXP">
+            <span>經驗值 0 / 100</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- COIN BAR (blue border) -->
+      <div class="currency-bar currency-bar--coin" id="coinBar">
+        <div class="currency-item">
+          <img src="/assets/icon/icon_coin.png" height="36" alt="coin">
+          <span class="currency-item__value">1,000</span>
+        </div>
+      </div>
+
+      <!-- DIAMOND BAR (blue border) -->
+      <div class="currency-bar currency-bar--diamond" id="diamondBar">
+        <div class="currency-item">
+          <img src="/assets/icon/icon_diamond.png" height="36" alt="diamond">
+          <span class="currency-item__value">0</span>
+        </div>
+      </div>
+
+    </div><!-- /top-bar -->
+
+
+    <!-- PHASER GAME AREA (purple border) -->
+    <div class="phaser-container" id="phaserContainer">
+      <div class="game-canvas-bg"></div>
+
+      <!-- FARM AREA: 3×2 grid of farmland -->
+<div class="farm-area" id="farmArea">
+
+        <!-- Row 1 -->
+        <div class="farmland" data-index="0" onclick="selectFarmland(0)">
+          <img class="farmland__crop" src="/assets/crops/小麥成熟.png" alt="">
+        </div>
+        <div class="farmland" data-index="1" onclick="selectFarmland(1)">
+          <img class="farmland__crop" src="/assets/crops/玉米成長中.png" alt="">
+          <div class="farmland__timer">00:08:30</div>
+        </div>
+        <div class="farmland" data-index="2" onclick="selectFarmland(2)"></div>
+
+        <!-- Row 2 -->
+        <div class="farmland" data-index="3" onclick="selectFarmland(3)">
+          <img class="farmland__crop" src="/assets/crops/紅蘿蔔幼苗.png" alt="">
+        </div>
+        <div class="farmland farmland--selected" data-index="4" onclick="selectFarmland(4)">
+          <img class="farmland__crop" src="/assets/crops/馬鈴薯成熟.png" alt="">
+        </div>
+        <div class="farmland" data-index="5" onclick="selectFarmland(5)"></div>
+
+      </div><!-- /farm-area -->
+
+      <!-- PLAYER CHARACTER (small farmer sprite) -->
+      <img class="player-char" src="/assets/icon/icon_player.png" alt="player" style="bottom:30px;right:80px;">
+
+      <!-- WOOD SIGN -->
+      <img class="wood-sign" src="/assets/ui/wood_sign.png" alt="" style="width:64px;height:64px;right:40px;bottom:120px;">
+
+      <!-- ACTION MENU (shown when farmland selected) -->
+      <div class="action-menu" id="actionMenu" style="display:none;">
+        <div class="action-menu__title">📋農地操作</div>
+        <div class="action-menu__buttons">
+          <div class="action-btn" onclick="doAction('播種')">
+            <img src="/assets/icon/icon_seed.png.png" alt="播種">
+            <span class="action-btn__label">播種</span>
+          </div>
+          <div class="action-btn" onclick="doAction('澆水')">
+            <img src="/assets/icon/icon_watering.png.png" alt="澆水">
+            <span class="action-btn__label">澆水</span>
+          </div>
+          <div class="action-btn" onclick="doAction('施肥')">
+            <img src="/assets/icon/icon_fertilizer.png.png" alt="施肥">
+            <span class="action-btn__label">施肥</span>
+          </div>
+          <div class="action-btn" onclick="doAction('收成')">
+            <img src="/assets/icon/icon_harvest.png.png" alt="收成">
+            <span class="action-btn__label">收成</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /phaser-container -->
+
+
+    <!-- HOTBAR (yellow border) -->
+    <div class="hotbar" id="hotbar">
+
+<div class="hotbar__btn" onclick="hotbarClick('背包')">
+        <img src="/assets/icon/icon_inventory.png" alt="背包">
+        <span>背包</span>
+      </div>
+
+      <div class="hotbar__btn" onclick="hotbarClick('商店')">
+        <img src="/assets/icon/icon_shop.png" alt="商店">
+        <span>商店</span>
+      </div>
+
+      <div class="hotbar__btn" onclick="hotbarClick('訂單')">
+        <img src="/assets/icon/icon_order.png.png" alt="訂單">
+        <span>訂單</span>
+      </div>
+
+      <div class="hotbar__btn" onclick="hotbarClick('任務')">
+        <img src="/assets/icon/icon_quest.png" alt="任務">
+        <span>任務</span>
+      </div>
+
+      <div class="hotbar__btn" onclick="hotbarClick('玩家')">
+        <img src="/assets/icon/icon_player.png" alt="玩家">
+        <span>玩家</span>
+      </div>
+
+    </div><!-- /hotbar -->
+
+  </div><!-- /game-page -->
+
+</div><!-- /root -->
+
+
+<script>
+// ─── INTERACTIVITY ───
+
+let selectedFarmlandIndex = 4; // default selected (馬鈴薯成熟)
+let actionMenuVisible = false;
+
+function selectFarmland(index) {
+  // Remove selection from all
+  document.querySelectorAll('.farmland').forEach(el => {
+    el.classList.remove('farmland--selected');
+  });
+
+  // Select clicked tile
+  const farmland = document.querySelector(`.farmland[data-index="${index}"]`);
+  if (farmland) {
+    farmland.classList.add('farmland--selected');
+    selectedFarmlandIndex = index;
+  }
+
+  // Show action menu below the selected farmland
+  showActionMenu();
+}
+
+function showActionMenu() {
+  const menu = document.getElementById('actionMenu');
+  menu.style.display = 'flex';
+
+  // Position below the selected farmland
+  const selected = document.querySelector('.farmland.farmland--selected');
+  if (selected) {
+    const farmArea = document.getElementById('farmArea');
+    const rect = farmArea.getBoundingClientRect();
+    const containerRect = document.getElementById('phaserContainer').getBoundingClientRect();
+
+    // Show action menu inside container, below farm area
+    menu.style.position = 'absolute';
+    menu.style.bottom = '20px';
+    menu.style.left = '50%';
+    menu.style.transform = 'translateX(-50%)';
+    menu.style.top = 'auto';
+  }
+
+  actionMenuVisible = true;
+}
+
+function hideActionMenu() {
+  document.getElementById('actionMenu').style.display = 'none';
+  actionMenuVisible = false;
+}
+
+function doAction(action) {
+  console.log(`[Mockup] Action: ${action} on farmland ${selectedFarmlandIndex}`);
+  // Visual feedback
+  const btns = document.querySelectorAll('.action-btn');
+  btns.forEach(btn => {
+    if (btn.textContent.includes(action)) {
+      btn.style.transform = 'scale(0.9)';
+      setTimeout(() => btn.style.transform = 'scale(1)', 150);
+    }
+  });
+}
+
+function hotbarClick(label) {
+  console.log(`[Mockup] Hotbar clicked: ${label}`);
+}
+
+// ─── DEBUG: Report DOM sizes ───
+setTimeout(() => {
+  const playerInfo = document.getElementById('playerInfo');
+  const coinBar = document.getElementById('coinBar');
+  const diamondBar = document.getElementById('diamondBar');
+  const hotbar = document.getElementById('hotbar');
+  const phaserContainer = document.getElementById('phaserContainer');
+  const farmArea = document.getElementById('farmArea');
+
+  console.log('═══ MOCKUP DEBUG SIZES ═══');
+  console.log(`playerInfo:     ${playerInfo?.offsetWidth}x${playerInfo?.offsetHeight}`);
+  console.log(`coinBar:        ${coinBar?.offsetWidth}x${coinBar?.offsetHeight}`);
+  console.log(`diamondBar:     ${diamondBar?.offsetWidth}x${diamondBar?.offsetHeight}`);
+  console.log(`hotbar:         ${hotbar?.offsetWidth}x${hotbar?.offsetHeight}`);
+  console.log(`phaserContainer:${phaserContainer?.offsetWidth}x${phaserContainer?.offsetHeight}`);
+  console.log(`farmArea:       ${farmArea?.offsetWidth}x${farmArea?.offsetHeight}`);
+  console.log(`window:         ${window.innerWidth}x${window.innerHeight}`);
+  console.log('═══════════════════════════');
+
+  // Log farmland sizes
+  document.querySelectorAll('.farmland').forEach((el, i) => {
+    console.log(`farmland[${i}]: ${el.offsetWidth}x${el.offsetHeight}`);
+  });
+}, 1500);
+
+// ─── Toggle debug borders ───
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'd' || e.key === 'D') {
+    document.getElementById('gamePage').classList.toggle('debug-borders');
+  }
+});
+</script>
+
+</body>
+</html>

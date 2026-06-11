@@ -47,7 +47,7 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
     setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch(`http://localhost:3001/api/inventory?type=${activeTab}&page=${page}&limit=10`, {
+      const res = await fetch(`/api/inventory?type=${activeTab}&page=${page}&limit=10`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data: InventoryResponse = await res.json();
@@ -78,7 +78,7 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
       const invItem = items.find(i => i.id === itemId);
       if (!invItem) return;
 
-      const res = await fetch('http://localhost:3001/api/shop/sell', {
+      const res = await fetch('/api/shop/sell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ cropId: invItem.itemId, amount: 1 })

@@ -39,7 +39,9 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await db.execute('SELECT * FROM users WHERE account = ?', [account]
+    const result = await db.execute(
+      `SELECT id, account, password_hash as passwordHash, nickname, email, level, exp, gold, created_at as createdAt, last_login_at as lastLoginAt FROM users WHERE account = ?`,
+      [account]
     );
 
     const rows = result.rows as User[];
@@ -92,7 +94,7 @@ router.post('/login', async (req: Request, res: Response) => {
 // 註冊
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { account, password, nickname, email }: { account?: string; password?: string; nickname?: string; email?: string } = req.body;
+    const { account, password, nickname, email, inviteCode }: { account?: string; password?: string; nickname?: string; email?: string; inviteCode?: string } = req.body;
 
     if (!account || !password || !nickname) {
       return res.status(400).json({
@@ -143,7 +145,7 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    const userRows = await db.execute('SELECT * FROM users WHERE id = last_insert_rowid()');
+    const userRows = await db.execute('SELECT id, account, password_hash as passwordHash, nickname, email, level, exp, gold, created_at as createdAt, last_login_at as lastLoginAt FROM users WHERE id = last_insert_rowid()');
     const newUser = (userRows.rows as any[])[0];
 
     if (!newUser) {
@@ -288,7 +290,9 @@ router.get('/me', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await db.execute('SELECT * FROM users WHERE id = ?', [payload.userId]
+    const result = await db.execute(
+      `SELECT id, account, password_hash as passwordHash, nickname, email, level, exp, gold, created_at as createdAt, last_login_at as lastLoginAt FROM users WHERE id = ?`,
+      [payload.userId]
     );
 
     const rows = result.rows as User[];

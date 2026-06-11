@@ -6,13 +6,15 @@
 
 body {
   font-family: 'Cubic 11', sans-serif;
-  background: linear-gradient(180deg, #87CEEB 0%, #98D8C8 50%, #90EE90 100%);
+  background: #79B95B;
   min-height: 100vh;
   color: #4a3520;
+  overflow: hidden;
 }
 
 #root {
   min-height: 100vh;
+  overflow: hidden;
 }
 
 input {
