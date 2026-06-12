@@ -32,7 +32,7 @@ async function seedCrops() {
       buyPrice: 15,
       exp: 4,
       sprite: 'crop_carrot',
-      requiredLevel: 3
+      requiredLevel: 1
     },
     {
       id: 4,
@@ -42,7 +42,7 @@ async function seedCrops() {
       buyPrice: 25,
       exp: 5,
       sprite: 'crop_potato',
-      requiredLevel: 5
+      requiredLevel: 1
     },
     {
       id: 5,

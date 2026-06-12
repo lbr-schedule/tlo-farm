@@ -26,6 +26,20 @@ app.get('/health', (_req, res) => {
 // API 路由
 app.use('/api/auth', authRouter);
 
+// 公開的農場路由（不需要認證）
+app.get('/api/farm/crops', async (_req, res) => {
+  try {
+    const { db } = await import('@tlo-farm/database');
+    const cropResult = await db.execute(
+      `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp, sprite, required_level as requiredLevel FROM crops`
+    );
+    return res.json({ success: true, crops: cropResult.rows || [] });
+  } catch (err) {
+    console.error('取得作物清單錯誤:', err);
+    return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
 // 需要認證的路由
 app.use('/api/farm', authMiddleware, farmRouter);
 app.use('/api/shop', authMiddleware, shopRouter);

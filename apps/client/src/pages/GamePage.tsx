@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import FarmScene from '../scenes/FarmScene';
 import { useAuth } from '../hooks/useAuth';
 import ShopModal from '../components/ui/ShopModal';
+import { backpackSystem } from '../systems/BackpackSystem';
 import BackpackModal from '../components/ui/BackpackModal';
 import LevelUpModal from '../components/ui/LevelUpModal';
 import OrderModal from '../components/ui/OrderModal';
@@ -66,10 +67,36 @@ export default function GamePage() {
   const [showPlayer, setShowPlayer] = useState(false);
   const [displayUser, setDisplayUser] = useState(user);
   const [pendingLevelUp, setPendingLevelUp] = useState<number | null>(null);
+  const lastShownLevelRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (user) setDisplayUser(user);
   }, [user]);
+
+  // ── 進入遊戲前驗證 token（只執行一次）──
+  useEffect(() => {
+    // 避免在 /login 頁面又觸發導向
+    if (window.location.pathname === '/login') return;
+
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const now = Math.floor(Date.now() / 1000);
+      if (!payload.exp || payload.exp < now) {
+        console.warn('[GamePage] Token 已過期，導向登入頁');
+        navigate('/login');
+      }
+    } catch {
+      console.warn('[GamePage] Token 格式無效，導向登入頁');
+      navigate('/login');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ── 只在 mount 時執行一次，不依賴 navigate ──
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -93,23 +120,24 @@ export default function GamePage() {
 
     const tryRegister = () => {
       const scene = gameRef.current?.scene.getScene('FarmScene');
-      if (scene?.sys.settings?.status === 'loaded' || (scene as any)?.texture) {
-        scene.events.on('harvest', (data: { gold: number; exp: number; cropName: string }) => {
-          handleHarvest(data);
-        });
+      if (!scene) {
+        const attempts = (tryRegister as any).attempts || 0;
+        if (attempts < 20) {
+          (tryRegister as any).attempts = attempts + 1;
+          setTimeout(tryRegister, 100);
+        }
         return;
       }
-      const attempts = (tryRegister as any).attempts || 0;
-      (tryRegister as any).attempts = attempts + 1;
-      if (scene?.scene) {
-        scene.events.once('ready', () => {
-          scene.events.on('harvest', (data: { gold: number; exp: number; cropName: string }) => {
-            handleHarvest(data);
-          });
-        });
-      } else if (attempts < 20) {
-        setTimeout(tryRegister, 100);
-      }
+      // 移除舊監聽（防止重複）
+      scene.events.off('harvest');
+      scene.events.off('userUpdated');
+
+      scene.events.on('harvest', (data: { gold: number; exp: number; cropName: string }) => {
+        handleHarvest(data);
+      });
+      scene.events.on('userUpdated', (user: { gold: number; exp: number; level: number }) => {
+        handleUserUpdated(user);
+      });
     };
     setTimeout(tryRegister, 50);
 
@@ -121,6 +149,21 @@ export default function GamePage() {
     };
   }, []);
 
+  // ── 任何 Modal 開啟時阻擋 Phaser 農地點擊 ──
+  const isModalOpen = showBackpack || showShop || showOrder || showQuest || showPlayer;
+  useEffect(() => {
+    // 1. canvas pointerEvents 保險
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.style.pointerEvents = isModalOpen ? 'none' : '';
+    }
+    // 2. 通知 Phaser Scene 禁用農地點擊
+    const scene = gameRef.current?.scene.getScene('FarmScene') as any;
+    if (scene?.setFarmInputEnabled) {
+      scene.setFarmInputEnabled(!isModalOpen);
+    }
+  }, [isModalOpen]);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -129,17 +172,30 @@ export default function GamePage() {
   const handlePurchaseSuccess = (newGold: number, _message: string) => {
     setDisplayUser(prev => ({ ...prev!, gold: newGold }));
     if (updateUser) updateUser({ gold: newGold });
+    // 刷新背包資料，讓 SeedSelectModal 可以看到最新數量
+    backpackSystem.fetchAll();
   };
 
-  const handleHarvest = (data: { gold: number; exp: number; cropName: string }) => {
-    const newGold = (displayUser?.gold ?? 0) + data.gold;
-    const newExp = (displayUser?.exp ?? 0) + data.exp;
-    setDisplayUser(prev => ({ ...prev!, gold: newGold, exp: newExp }));
-    if (updateUser) updateUser({ gold: newGold, exp: newExp });
-    const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
-    let lv = displayUser?.level ?? 1;
-    while (lv < expForLevel.length && newExp >= expForLevel[lv]) lv++;
-    if (lv > (displayUser?.level ?? 1)) handleLevelUp(lv);
+  const handleHarvest = (_data: { gold: number; exp: number; cropName: string }) => {
+    // gold/exp/level 統一由 handleUserUpdated（伺服器權威值）更新
+    // harvest 事件只用於通知顯示（ cropName 等）
+  };
+
+  // ── 從伺服器更新使用者資料（exp/level/gold）──
+  const handleUserUpdated = (user: { gold: number; exp: number; level: number }) => {
+    const oldLevel = displayUser?.level ?? 1;
+    setDisplayUser(prev => ({
+      ...prev!,
+      gold: user.gold,
+      exp: user.exp,
+      level: user.level,
+    }));
+    if (updateUser) updateUser({ gold: user.gold, exp: user.exp, level: user.level });
+    // 升級檢查：oldLevel 在 setDisplayUser 之前 captured，防止同一 level 重複彈窗
+    if (user.level > oldLevel && user.level > (lastShownLevelRef.current ?? 0)) {
+      lastShownLevelRef.current = user.level;
+      setPendingLevelUp(user.level);
+    }
   };
 
   const handleSellSuccess = (newGold: number, _message: string) => {
@@ -147,16 +203,29 @@ export default function GamePage() {
     if (updateUser) updateUser({ gold: newGold });
   };
 
-  const handleLevelUp = (newLevel: number) => {
-    const oldLevel = displayUser?.level || 1;
-    if (newLevel > oldLevel) {
-      setDisplayUser(prev => ({ ...prev!, level: newLevel }));
-      setPendingLevelUp(newLevel);
-      if (updateUser) updateUser({ level: newLevel });
-    }
+  const handleLevelUp = (_newLevel: number) => {
+    // 等級已由 handleUserUpdated 在 setDisplayUser 前 capture oldLevel 並直接設定 pendingLevelUp
+    // 這裡只做日誌或預留擴充
   };
 
+  // 計算升級所需經驗
+  const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
+  const currentLevel = displayUser?.level ?? 1;
+  const currentExp = displayUser?.exp ?? 0;
+  const nextLevelExp = expForLevel[Math.min(currentLevel, expForLevel.length - 1)] ?? 100;
+  const expPercent = Math.min(100, (currentExp / nextLevelExp) * 100);
+  console.log('[PlayerInfo] NEW COMPONENT ACTIVE');
+
   return (
+    <>
+      <style>{`
+        .pip-panel { position: absolute; left: 24px; top: 24px; width: 360px; height: 120px; background-image: url('/assets/ui/ui_player_info .png'); background-size: 360px 120px; background-repeat: no-repeat; background-position: left top; image-rendering: pixelated; overflow: hidden; }
+        .pip-avatar { position: absolute; left: 24px; top: 30px; width: 56px; height: 56px; image-rendering: pixelated; object-fit: contain; }
+        .pip-level { position: absolute; left: 110px; top: 30px; font-size: 16px; font-family: 'Cubic 11', sans-serif; color: #3b2412; }
+        .pip-exp-text { position: absolute; left: 110px; top: 54px; font-size: 12px; font-family: 'Cubic 11', sans-serif; color: #5C3D2E; }
+        .pip-exp-bar-bg { position: absolute; left: 110px; top: 78px; width: 130px; height: 8px; background: #3d2518; border-radius: 2px; overflow: hidden; }
+        .pip-exp-bar-fill { height: 100%; background: #7fd34e; border-radius: 2px; transition: width 0.3s ease; }
+      `}</style>
     <div style={{
       width: '100vw',
       height: '100vh',
@@ -176,24 +245,13 @@ export default function GamePage() {
         zIndex: 20,
       }}>
         {/* 玩家資訊面板 */}
-        <div style={{
-          position: 'absolute',
-          left: 24,
-          top: 24,
-          width: 360,
-          height: 120,
-          backgroundImage: "url('/assets/ui/ui_player_info .png')",
-          backgroundSize: '100% 100%',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'left top',
-          imageRendering: 'pixelated',
-        }}>
-          {/* 頭像 */}
-          <img src="/assets/icon/icon_player.png" alt="avatar" style={{ position: 'absolute', left: 24, top: 28, width: 72, height: 72, imageRendering: 'pixelated', objectFit: 'contain' }} />
-          {/* 等級 */}
-          <span style={{ position: 'absolute', left: 115, top: 52, fontFamily: "'Cubic 11', sans-serif", fontSize: 18, color: '#3b2412' }}>
-            Lv.{displayUser?.level ?? 1}
-          </span>
+        <div className="pip-panel">
+          <img className="pip-avatar" src="/assets/icon/icon_player.png" alt="avatar" />
+          <div className="pip-level">Lv.{displayUser?.level ?? 1}</div>
+          <div className="pip-exp-text">EXP {currentExp} / {nextLevelExp}</div>
+          <div className="pip-exp-bar-bg">
+            <div className="pip-exp-bar-fill" style={{ width: `${expPercent.toFixed(1)}%` }} />
+          </div>
         </div>
 
         {/* 金幣列 */}
@@ -251,6 +309,7 @@ export default function GamePage() {
           height: 'calc(100vh - 210px)',
           background: 'transparent',
           zIndex: 15,
+          pointerEvents: isModalOpen ? 'none' : 'auto',
         }}
       />
 
@@ -296,11 +355,6 @@ export default function GamePage() {
           userLevel={displayUser?.level ?? 1}
           onPurchaseSuccess={(newGold, _message) => {
             handlePurchaseSuccess(newGold, _message);
-            const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
-            const newExp = displayUser?.exp ?? 0;
-            let lv = displayUser?.level ?? 1;
-            while (lv < expForLevel.length && newExp >= expForLevel[lv]) lv++;
-            if (lv > (displayUser?.level ?? 1)) handleLevelUp(lv);
           }}
         />
       )}
@@ -308,7 +362,9 @@ export default function GamePage() {
       {/* 彈窗：背包 */}
       {showBackpack && (
         <BackpackModal
-          onClose={() => setShowBackpack(false)}
+          onClose={() => {
+            setShowBackpack(false);
+          }}
           onSelectSeed={(cropId, _cropName) => {
             const scene = gameRef.current?.scene.getScene('FarmScene') as any;
             if (scene && scene.setSelectedSeed) {
@@ -334,5 +390,6 @@ export default function GamePage() {
       {/* 彈窗：玩家 */}
       {showPlayer && <PlayerModal onClose={() => setShowPlayer(false)} user={displayUser} />}
     </div>
+    </>
   );
 }

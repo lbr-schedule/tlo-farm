@@ -7,13 +7,16 @@ import { useAuth } from '../hooks/useAuth';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuth();
-  
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
+
+  // ── 只在 auth 初始化完成後檢查一次，避免無限迴圈 ──
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/farm');
-    }
-  }, [isAuthenticated, navigate]);
+    if (authLoading) return; // 等待 auth 初始化完成
+    if (!isAuthenticated) return; // 沒有有效 token，不跳轉
+    if (window.location.pathname === '/farm') return; // 已經在遊戲頁，不跳
+    navigate('/farm');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated]);
   
   const [isRegister, setIsRegister] = useState(location.pathname === '/register');
   const [username, setUsername] = useState('');

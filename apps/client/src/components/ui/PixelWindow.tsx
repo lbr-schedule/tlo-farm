@@ -10,24 +10,29 @@ interface PixelWindowProps {
 
 export default function PixelWindow({ title, children, onClose, width = 400 }: PixelWindowProps) {
   return (
-    <div style={{
-      position: 'fixed',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      width: width,
-      maxWidth: '95vw',
-      maxHeight: '85vh',
-      background: '#5C3D2E',
-      border: '6px solid #3d2518',
-      borderRadius: '4px',
-      boxShadow: '8px 8px 0 #3d2518',
-      zIndex: 1000,
-      display: 'flex',
-      flexDirection: 'column',
-      fontFamily: "'Cubic 11', sans-serif",
-      animation: 'pixelFadeIn 0.2s ease-out',
-    }}>
+    <div
+      tabIndex={-1}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: width,
+        maxWidth: '95vw',
+        maxHeight: '85vh',
+        background: '#5C3D2E',
+        border: '6px solid #3d2518',
+        borderRadius: '4px',
+        boxShadow: '8px 8px 0 #3d2518',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: "'Cubic 11', sans-serif",
+        animation: 'pixelFadeIn 0.2s ease-out',
+        outline: 'none',
+      }}
+    >
       {/* title */}
       <div style={{
         background: 'linear-gradient(180deg, #8B5A2B 0%, #6B4423 100%)',
@@ -62,7 +67,7 @@ export default function PixelWindow({ title, children, onClose, width = 400 }: P
             boxShadow: '2px 2px 0 #3d2518',
           }}
         >
-          ✕
+          X
         </button>
       </div>
 

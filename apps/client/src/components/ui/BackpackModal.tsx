@@ -1,28 +1,6 @@
 import { useEffect, useState } from 'react';
 import PixelWindow from './PixelWindow';
-
-interface InventoryItem {
-  id: number;
-  itemType: 'seed' | 'crop';
-  itemId: number;
-  amount: number;
-  name: string;
-  sprite: string;
-  sellPrice: number;
-  growTimeSec: number;
-}
-
-interface InventoryResponse {
-  success: boolean;
-  message: string;
-  inventory: InventoryItem[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
+import { backpackSystem, BackpackItem } from '../../systems/BackpackSystem';
 
 interface BackpackModalProps {
   onClose: () => void;
@@ -30,8 +8,8 @@ interface BackpackModalProps {
   onSellSuccess: (newGold: number, message: string) => void;
 }
 
-export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalProps) {
-  const [items, setItems] = useState<InventoryItem[]>([]);
+export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: BackpackModalProps) {
+  const [items, setItems] = useState<BackpackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selling, setSelling] = useState<number | null>(null);
   const [message, setMessage] = useState('');
@@ -39,63 +17,45 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  // ── ESC 鍵關閉 ──
   useEffect(() => {
-    fetchInventory();
-  }, [activeTab, page]);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
-  const fetchInventory = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/inventory?type=${activeTab}&page=${page}&limit=10`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data: InventoryResponse = await res.json();
-      if (data.success) {
-        setItems(data.inventory || []);
-        setTotalPages(data.pagination.totalPages || 1);
-      }
-    } catch {
-      setMessage('載入失敗');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ── 訂閱背包資料 ──
+  useEffect(() => {
+    const unsub = backpackSystem.subscribe((state) => {
+      const list = activeTab === 'seed' ? state.seeds : state.crops;
+      setItems(list);
+      setLoading(state.loading);
+      setTotalPages(Math.max(1, Math.ceil(list.length / 10)));
+    });
+    backpackSystem.fetchAll();
+    return unsub;
+  }, [activeTab]);
 
-  const handleUse = (item: InventoryItem) => {
+  const handleUse = (item: BackpackItem) => {
     if (onSelectSeed) {
       onSelectSeed(item.itemId, item.name);
-      onClose();
     }
+    onClose();
   };
 
-  const handleSell = async (itemId: number, itemType: string, itemName: string, sellPrice: number) => {
-    setSelling(itemId);
+  const handleSell = async (item: BackpackItem) => {
+    setSelling(item.id);
     setMessage('');
-    try {
-      const token = localStorage.getItem('accessToken');
-      // 找出 inventory id
-      const invItem = items.find(i => i.id === itemId);
-      if (!invItem) return;
-
-      const res = await fetch('/api/shop/sell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ cropId: invItem.itemId, amount: 1 })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage(data.message);
-        onSellSuccess(data.user.gold, data.message);
-        fetchInventory();
-      } else {
-        setMessage(data.message || '賣出失敗');
-      }
-    } catch {
-      setMessage('網路錯誤');
-    } finally {
-      setSelling(null);
+    const result = await backpackSystem.sellItem(item.id);
+    if (result.success) {
+      setMessage(result.message);
+      onSellSuccess(result.newGold, result.message);
+    } else {
+      setMessage(result.message);
     }
+    setSelling(null);
   };
 
   const formatTime = (sec: number) => {
@@ -110,11 +70,11 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
     disabled?: boolean;
     variant?: 'normal' | 'danger' | 'success';
   }) => {
-    const colors = {
-      normal: { bg: '#8B5A2B', border: '#5C3D2E', shadow: '#3d2518' },
-      danger: { bg: '#C0392B', border: '#8B0000', shadow: '#3d2518' },
-      success: { bg: '#228B22', border: '#1a6b1a', shadow: '#3d2518' },
-    }[variant];
+    const colors = variant === 'danger'
+      ? { bg: '#C0392B', border: '#8B0000', shadow: '#3d2518' }
+      : variant === 'success'
+        ? { bg: '#228B22', border: '#1a6b1a', shadow: '#3d2518' }
+        : { bg: '#8B5A2B', border: '#5C3D2E', shadow: '#3d2518' };
 
     return (
       <button
@@ -141,7 +101,7 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
 
   if (loading) {
     return (
-      <PixelWindow title="🎒 背包" onClose={onClose}>
+      <PixelWindow title="背包" onClose={onClose}>
         <div style={{ textAlign: 'center', padding: '40px', fontFamily: "'Cubic 11', sans-serif" }}>
           載入中...
         </div>
@@ -149,29 +109,33 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
     );
   }
 
+  const pageSize = 10;
+  const start = (page - 1) * pageSize;
+  const paginatedItems = items.slice(start, start + pageSize);
+
   return (
-    <PixelWindow title="🎒 背包" onClose={onClose} width={480}>
+    <PixelWindow title="背包" onClose={onClose} width={480}>
       <div style={{ fontFamily: "'Cubic 11', sans-serif" }}>
         {/* 分頁 Tab */}
         <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
           <PixelButton onClick={() => { setActiveTab('seed'); setPage(1); }} disabled={activeTab === 'seed'}>
-            🌱 種子
+            種子
           </PixelButton>
           <PixelButton onClick={() => { setActiveTab('crop'); setPage(1); }} disabled={activeTab === 'crop'}>
-            🌾 作物
+            作物
           </PixelButton>
         </div>
 
         {/* 訊息 */}
         {message && (
           <div style={{
-            background: '#27AE60',
+            background: message.includes('失敗') || message.includes('不足') || message.includes('錯誤') ? '#C0392B' : '#27AE60',
             color: '#fff',
             padding: '8px 12px',
             borderRadius: '2px',
             marginBottom: '12px',
             fontSize: '14px',
-            border: '3px solid #1a6b1a',
+            border: '3px solid #3d2518',
             textAlign: 'center',
           }}>
             {message}
@@ -180,19 +144,14 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
 
         {/* 空狀態 */}
         {items.length === 0 && (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px',
-            color: '#8B6914',
-            fontSize: '15px',
-          }}>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#8B6914', fontSize: '15px' }}>
             {activeTab === 'seed' ? '還沒有種子，去商店購買吧！' : '還沒有作物，先去種田吧！'}
           </div>
         )}
 
         {/* 物品列表 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {items.map(item => (
+          {paginatedItems.map(item => (
             <div key={item.id} style={{
               background: '#fff',
               border: '4px solid #5C3D2E',
@@ -213,11 +172,10 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '20px',
+                  fontSize: '18px',
                   position: 'relative',
                 }}>
-                  {activeTab === 'seed' ? '🌱' : '🌾'}
-                  {/* 數量角標 */}
+                  {activeTab === 'seed' ? 'S' : 'C'}
                   <div style={{
                     position: 'absolute',
                     top: '-8px',
@@ -238,26 +196,18 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
                 <div>
                   <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>{item.name}</div>
                   <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>
-                    {activeTab === 'seed' ? `⏱ ${formatTime(item.growTimeSec)}` : `💰 售價 ${item.sellPrice}`}
+                    {activeTab === 'seed' ? `時間 ${formatTime(item.growTimeSec)}` : `售價 ${item.sellPrice}`}
                   </div>
                 </div>
               </div>
               {activeTab === 'seed' && (
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <PixelButton
-                    onClick={() => handleUse(item)}
-                    variant="success"
-                  >
-                    🌱 使用
-                  </PixelButton>
-                </div>
+                <PixelButton onClick={() => handleUse(item)} variant="success">
+                  使用
+                </PixelButton>
               )}
               {activeTab === 'crop' && (
-                <PixelButton
-                  onClick={() => handleSell(item.id, item.itemType, item.name, item.sellPrice)}
-                  disabled={selling === item.id}
-                >
-                  {selling === item.id ? '賣出中...' : `💰 賣出`}
+                <PixelButton onClick={() => handleSell(item)} disabled={selling === item.id}>
+                  {selling === item.id ? '賣出中...' : '賣出'}
                 </PixelButton>
               )}
             </div>
@@ -267,15 +217,9 @@ export default function BackpackModal({ onClose, onSellSuccess }: BackpackModalP
         {/* 分頁導航 */}
         {totalPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-            <PixelButton onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-              ◀ 上一頁
-            </PixelButton>
-            <span style={{ padding: '6px 12px', fontSize: '14px', color: '#5C3D2E' }}>
-              {page} / {totalPages}
-            </span>
-            <PixelButton onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
-              下一頁 ▶
-            </PixelButton>
+            <PixelButton onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>上一頁</PixelButton>
+            <span style={{ padding: '6px 12px', fontSize: '14px', color: '#5C3D2E' }}>{page} / {totalPages}</span>
+            <PixelButton onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>下一頁</PixelButton>
           </div>
         )}
       </div>

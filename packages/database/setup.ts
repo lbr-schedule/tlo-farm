@@ -67,6 +67,18 @@ async function setup() {
   `);
   console.log('  ✅ farm_tiles 表');
 
+  // ── 加入 watered_at 欄位（如果還沒有）──
+  try {
+    await client.execute(`ALTER TABLE farm_tiles ADD COLUMN watered_at INTEGER`);
+    console.log('  ✅ watered_at 欄位已加入');
+  } catch (e: any) {
+    if (e.message?.includes('duplicate column') || e.message?.includes('no such column')) {
+      // 欄位已存在，忽略
+    } else {
+      console.log('  ⚠️ watered_at 欄位檢查:', e.message?.split('\n')[0]);
+    }
+  }
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS inventories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

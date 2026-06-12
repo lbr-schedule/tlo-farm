@@ -6,7 +6,7 @@ const router = Router();
 
 // 欄位名稱對應（資料庫底層底線命名）
 const USERS_FIELDS = 'id, account, nickname, email, level, exp, gold, created_at as createdAt, last_login_at as lastLoginAt';
-const TILES_FIELDS = 'id, user_id as userId, x, y, crop_id as cropId, planted_at as plantedAt, finish_at as finishAt, state';
+const TILES_FIELDS = 'id, user_id as userId, x, y, crop_id as cropId, planted_at as plantedAt, finish_at as finishAt, watered_at as wateredAt, state';
 
 // 取得農場狀態
 router.get('/status', async (req: AuthRequest, res: Response) => {
@@ -24,9 +24,29 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: '用戶不存在' });
     }
 
-    const tileRows = await db.execute(
+        const tileRows = await db.execute(
       `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ?`, [userId]
     );
+    console.log(`[Status] userId=${userId} tilesCount=${tileRows.rows.length}`, tileRows.rows.map((t: any) => `(${t.x},${t.y}:${t.state})`).join(', '));
+
+    // 如果沒有農地，自動初始化 6 塊（3x2）
+    if (tileRows.rows.length === 0) {
+      const GRID_COLS = 3;
+      const GRID_ROWS = 2;
+      for (let y = 0; y < GRID_ROWS; y++) {
+        for (let x = 0; x < GRID_COLS; x++) {
+          await db.execute(
+            `INSERT INTO farm_tiles (user_id, x, y, state) VALUES (?, ?, ?, 'empty')`,
+            [userId, x, y]
+          );
+        }
+      }
+      // 重新取得
+      const newTileRows = await db.execute(
+        `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ?`, [userId]
+      );
+      tileRows.rows = newTileRows.rows;
+    }
 
     const tilesWithTime = tileRows.rows.map((tile: any) => ({
       id: tile.id,
@@ -35,6 +55,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       cropId: tile.cropId,
       plantedAt: tile.plantedAt ? new Date(tile.plantedAt).getTime() : null,
       finishAt: tile.finishAt ? new Date(tile.finishAt).getTime() : null,
+      wateredAt: tile.wateredAt ? new Date(tile.wateredAt).getTime() : null,
       state: tile.state
     }));
 
@@ -114,17 +135,19 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
       `UPDATE users SET gold = gold - ? WHERE id = ?`, [crop.buyPrice, userId]
     );
 
-    // 更新或創建土地
+    // 更新或創建土地（播種後視為未澆水）
     if (existingTile) {
       await db.execute(
-        `UPDATE farm_tiles SET crop_id = ?, planted_at = ?, finish_at = ?, state = 'growing' WHERE id = ?`,
+        `UPDATE farm_tiles SET crop_id = ?, planted_at = ?, finish_at = ?, watered_at = NULL, state = 'growing' WHERE id = ?`,
         [cropId, now, finishAt, existingTile.id]
       );
+      console.log(`[Plant] UPDATE tile id=${existingTile.id} x=${x} y=${y} cropId=${cropId}`);
     } else {
       await db.execute(
-        `INSERT INTO farm_tiles (user_id, x, y, crop_id, planted_at, finish_at, state) VALUES (?, ?, ?, ?, ?, ?, 'growing')`,
+        `INSERT INTO farm_tiles (user_id, x, y, crop_id, planted_at, finish_at, watered_at, state) VALUES (?, ?, ?, ?, ?, ?, NULL, 'growing')`,
         [userId, x, y, cropId, now, finishAt]
       );
+      console.log(`[Plant] INSERT tile userId=${userId} x=${x} y=${y} cropId=${cropId} now=${now} finishAt=${finishAt}`);
     }
 
     // 更新後的玩家資料
@@ -181,9 +204,15 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: '土地不存在' });
     }
 
-    if (tile.state !== 'ready') {
-      if (tile.state === 'growing' && tile.finishAt) {
-        const remaining = new Date(tile.finishAt).getTime() - Date.now();
+    // ── 判斷是否可收成：state=mature/ready 或 時間已到 ──
+    const now = Date.now();
+    const finishMs = tile.finishAt ? (typeof tile.finishAt === 'number' ? tile.finishAt : new Date(tile.finishAt).getTime()) : null;
+    const isTimeUp = finishMs !== null && finishMs <= now;
+    const canHarvest = tile.state === 'mature' || tile.state === 'ready' || tile.state === 'growing' && isTimeUp;
+
+    if (!canHarvest) {
+      if ((tile.state === 'growing' || tile.state === 'seedling') && finishMs) {
+        const remaining = finishMs - now;
         if (remaining > 0) {
           return res.status(400).json({
             success: false,
@@ -226,7 +255,7 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
     );
 
     await db.execute(
-      `UPDATE farm_tiles SET crop_id = NULL, planted_at = NULL, finish_at = NULL, state = 'empty' WHERE id = ?`,
+      `UPDATE farm_tiles SET crop_id = NULL, planted_at = NULL, finish_at = NULL, watered_at = NULL, state = 'empty' WHERE id = ?`,
       [tile.id]
     );
 
@@ -297,21 +326,32 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
     }
 
     const tileRows = await db.execute(
-      `SELECT id, state FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
+      `SELECT id, state, crop_id as cropId FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
     );
     const tile = tileRows.rows[0];
+    console.log(`[Water] userId=${userId} x=${x} y=${y} tileRows=${JSON.stringify(tileRows.rows)} tile=${JSON.stringify(tile)}`);
 
-    if (!tile || tile.state === 'empty') {
-      return res.status(400).json({ success: false, message: '這裡沒有作物' });
+    if (!tile) {
+      return res.status(400).json({ success: false, message: `找不到 tile (userId=${userId}, x=${x}, y=${y})` });
+    }
+    if (tile.state === 'empty') {
+      return res.status(400).json({ success: false, message: ` tile state=empty (cropId=${tile.cropId})` });
     }
 
     if (tile.state === 'ready') {
       return res.status(400).json({ success: false, message: '這裡的作物已經成熟了' });
     }
 
+    // ── 寫入澆水時間 ──
+    await db.execute(
+      `UPDATE farm_tiles SET watered_at = ? WHERE user_id = ? AND x = ? AND y = ?`,
+      [Date.now(), userId, x, y]
+    );
+
     return res.json({
       success: true,
-      message: '澆水成功！作物會更快成熟！'
+      message: '澆水成功！作物會更快成熟！',
+      wateredAt: Date.now()
     });
   } catch (error) {
     console.error('澆水錯誤:', error);
@@ -333,6 +373,31 @@ router.get('/crops', async (_req, res: Response) => {
     });
   } catch (error) {
     console.error('查詢作物錯誤:', error);
+    return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
+// ── 重置農場（除錯用：刪除所有 tile，讓用戶重新開始）──
+router.post('/reset', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ success: false, message: '未授權' });
+
+    await db.execute(`DELETE FROM farm_tiles WHERE user_id = ?`, [userId]);
+
+    // 重新初始化 6 格空地
+    for (let y = 0; y < 2; y++) {
+      for (let x = 0; x < 3; x++) {
+        await db.execute(
+          `INSERT OR IGNORE INTO farm_tiles (user_id, x, y, state) VALUES (?, ?, ?, 'empty')`,
+          [userId, x, y]
+        );
+      }
+    }
+
+    return res.json({ success: true, message: '農場已重置' });
+  } catch (error) {
+    console.error('重置錯誤:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
