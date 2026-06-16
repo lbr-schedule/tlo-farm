@@ -45,6 +45,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       const newTileRows = await db.execute(
         `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ?`, [userId]
       );
+      console.log(`[Status] After INSERT, tiles re-fetched: count=${newTileRows.rows.length}`);
       tileRows.rows = newTileRows.rows;
     }
 
@@ -104,17 +105,14 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: '作物不存在' });
     }
 
-    // 檢查玩家金幣是否足夠
-    const userRows = await db.execute(
-      `SELECT id, gold FROM users WHERE id = ?`, [userId]
+    // 檢查玩家是否有足夠的種子
+    const seedInvRows = await db.execute(
+      `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'seed' AND item_id = ?`,
+      [userId, cropId]
     );
-    const user = userRows.rows[0];
-    if (!user) {
-      return res.status(404).json({ success: false, message: '用戶不存在' });
-    }
-
-    if (user.gold < crop.buyPrice) {
-      return res.status(400).json({ success: false, message: '金幣不足' });
+    const seedItem = seedInvRows.rows[0];
+    if (!seedItem || seedItem.amount < 1) {
+      return res.status(400).json({ success: false, message: '背包沒有這個種子' });
     }
 
     // 檢查土地是否已有作物
@@ -130,10 +128,13 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
     const now = Date.now();
     const finishAt = now + crop.growTimeSec * 1000;
 
-    // 扣除金幣
-    await db.execute(
-      `UPDATE users SET gold = gold - ? WHERE id = ?`, [crop.buyPrice, userId]
-    );
+
+    // 扣除背包中的種子（不扣金幣）
+    if (seedItem.amount === 1) {
+      await db.execute(`DELETE FROM inventories WHERE id = ?`, [seedItem.id]);
+    } else {
+      await db.execute(`UPDATE inventories SET amount = amount - 1 WHERE id = ?`, [seedItem.id]);
+    }
 
     // 更新或創建土地（播種後視為未澆水）
     if (existingTile) {
@@ -250,8 +251,8 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
     }
 
     await db.execute(
-      `UPDATE users SET gold = gold + ?, exp = ?, level = ? WHERE id = ?`,
-      [crop.sellPrice, newExp, newLevel, userId]
+      `UPDATE users SET exp = ?, level = ? WHERE id = ?`,
+      [newExp, newLevel, userId]
     );
 
     await db.execute(
@@ -284,11 +285,11 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
 
     return res.json({
       success: true,
-      message: `收成成功！獲得 ${crop.sellPrice} 金幣和 ${crop.exp} 經驗！`,
+      message: `收成成功！獲得 ${crop.exp} 經驗！`,
       harvest: {
         cropId: crop.id,
         cropName: crop.nameZhTw,
-        goldEarned: crop.sellPrice,
+        goldEarned: 0,
         expEarned: crop.exp
       },
       leveledUp,

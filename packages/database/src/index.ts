@@ -84,6 +84,9 @@ async function rawExecute(sql: string, args: any[] = []) {
   }
   
   const result = data.results?.[0]?.response?.result;
+  if (!result) {
+    console.log('[RAW-FETCH] result is undefined, full response:', JSON.stringify(data).substring(0, 500));
+  }
   console.log('[RAW-FETCH] result cols:', result?.cols, 'rows:', result?.rows?.length);
   
   const cols = result?.cols?.map((c: any) => c.name) || [];
