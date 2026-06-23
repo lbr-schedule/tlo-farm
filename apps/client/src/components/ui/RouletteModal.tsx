@@ -26,7 +26,6 @@ const AD_IMAGES = [
   '/assets/ads/ad16.png',
 ];
 
-const NO_AD_PRICE = 10000;
 
 export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: RouletteModalProps) {
   const [adImage, setAdImage] = useState<string>('');
@@ -36,14 +35,9 @@ export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: 
   const [isBbrPhoto, setIsBbrPhoto] = useState<boolean>(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [hasNoAd, setHasNoAd] = useState(false);
-  const [showAd, setShowAd] = useState(true);
-  const [purchasing, setPurchasing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [localGold, setLocalGold] = useState(userGold);
 
   useEffect(() => {
-    fetchAdStatus();
     fetchAdImage();
   }, []);
 
@@ -67,28 +61,7 @@ export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: 
     }
   };
 
-  const fetchAdStatus = async () => {
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/roulette/status', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setHasNoAd(data.hasNoAd);
-        setShowAd(!data.hasNoAd);
-      }
-    } catch (e) {
-      console.error('[Roulette] 取得狀態失敗:', e);
-    }
-  };
 
-
-
-  // 檢查用戶金幣狀態
-  useEffect(() => {
-    setLocalGold(userGold);
-  }, [userGold]);
 
   const handleSpin = useCallback(() => {
     if (isSpinning) return;
@@ -109,48 +82,6 @@ export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: 
       setIsSpinning(false);
     }, 4000);
   }, [isSpinning, rotation]);
-
-  const handleBuyNoAd = async () => {
-    if (hasNoAd || purchasing) return;
-
-    if (localGold < NO_AD_PRICE) {
-      setMessage(`金幣不足!需要 ${NO_AD_PRICE} 金幣,你只有 ${localGold} 金幣`);
-      return;
-    }
-
-    setPurchasing(true);
-    setMessage('處理中...');
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/roulette/buy-no-ad', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        setHasNoAd(true);
-        setShowAd(false);
-        setLocalGold(data.newGold);
-        setMessage('購買成功!已啟用永久免廣告');
-        if (onPurchaseSuccess) {
-          onPurchaseSuccess(data.newGold, '購買成功!已啟用永久免廣告');
-        }
-      } else {
-        setMessage(data.message || '購買失敗');
-      }
-    } catch (e) {
-      console.error('[Roulette] 購買失敗:', e);
-      setMessage('購買失敗,請稍後再試');
-    } finally {
-      setPurchasing(false);
-    }
-  };
 
   const handleClose = () => {
     if (isSpinning) return;
@@ -308,43 +239,6 @@ export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: 
           font-size: 14px;
         }
 
-        .no-ad-btn {
-          width: 100%;
-          padding: 10px 16px;
-          font-size: 14px;
-          font-weight: bold;
-          color: #FFD700;
-          background: linear-gradient(180deg, #5C3D2E 0%, #3d2518 100%);
-          border: none;
-          border-top: 2px solid #8B4513;
-          cursor: pointer;
-          font-family: 'Cubic 11', sans-serif;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          transition: background 0.2s;
-        }
-
-        .no-ad-btn:hover:not(:disabled) {
-          background: linear-gradient(180deg, #7a5840 0%, #5C3D2E 100%);
-        }
-
-        .no-ad-btn:disabled {
-          color: #888;
-          cursor: not-allowed;
-        }
-
-        .no-ad-icon {
-          font-size: 16px;
-        }
-
-        .gold-display {
-          font-size: 14px;
-          color: #FFD700;
-          text-shadow: 1px 1px 0 #000;
-        }
-
         .message {
           font-size: 12px;
           color: #FF6B6B;
@@ -396,57 +290,33 @@ export default function RouletteModal({ onClose, userGold, onPurchaseSuccess }: 
         )}
 
         {/* 廣告區域 */}
-        {showAd && (
-          <div className="ad-container">
-            {adImage ? (
-              isBbrPhoto && adLink ? (
-                <a href={adLink} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
-                  <img
-                    className="ad-banner"
-                    src={adImage}
-                    alt="BBR 車庫新照片"
-                    onError={() => setAdImage('')}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <div style={{ fontSize: '0.65rem', color: '#aaa', padding: '4px 6px', textAlign: 'center' }}>
-                    @{adUsername} {adCaption ? `• ${adCaption}` : ''}
-                  </div>
-                </a>
-              ) : (
+        <div className="ad-container">
+          {adImage ? (
+            isBbrPhoto && adLink ? (
+              <a href={adLink} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
                 <img
                   className="ad-banner"
                   src={adImage}
-                  alt="廣告"
+                  alt="BBR 車庫新照片"
                   onError={() => setAdImage('')}
+                  style={{ cursor: 'pointer' }}
                 />
-              )
+                <div style={{ fontSize: '0.65rem', color: '#aaa', padding: '4px 6px', textAlign: 'center' }}>
+                  @{adUsername} {adCaption ? `• ${adCaption}` : ''}
+                </div>
+              </a>
             ) : (
-              <div className="ad-placeholder">載入廣告中...</div>
-            )}
-
-            {/* 永久免廣告按鈕 */}
-            <button
-              className="no-ad-btn"
-              onClick={handleBuyNoAd}
-              disabled={hasNoAd || purchasing || localGold < NO_AD_PRICE}
-            >
-              <span className="no-ad-icon">🚫</span>
-              <span>永久免廣告</span>
-              <span className="gold-display">
-                {hasNoAd ? '已擁有' : `${NO_AD_PRICE} 金幣`}
-              </span>
-            </button>
-          </div>
-        )}
-
-        {/* 已擁有免廣告提示 */}
-        {!showAd && (
-          <div className="ad-container" style={{ padding: '16px', textAlign: 'center'}}>
-            <div style={{ color: '#7fd34e', fontSize: '16px', fontWeight: 'bold' }}>
-              ✨ 永久免廣告已啟用 ✨
-            </div>
-          </div>
-        )}
+              <img
+                className="ad-banner"
+                src={adImage}
+                alt="廣告"
+                onError={() => setAdImage('')}
+              />
+            )
+          ) : (
+            <div className="ad-placeholder">載入廣告中...</div>
+          )}
+        </div>
       </div>
     </PixelWindow>
   );

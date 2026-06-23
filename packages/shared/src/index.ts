@@ -6,8 +6,8 @@ export interface User {
   level: number;
   exp: number;
   gold: number;
-  createdAt: Date;
-  lastLoginAt: Date;
+  createdAt: number;
+  lastLoginAt: number;
 }
 
 export interface UserProfile {
@@ -17,6 +17,18 @@ export interface UserProfile {
   level: number;
   exp: number;
   gold: number;
+  playerCode: string;
+  farmName: string;
+  inviteCode: string;
+  diamonds: number;
+  friendCount: number;
+  friendLimit: number;
+  farmPopularity: number;
+  avatar: string | null;
+  titleId: string | null;
+  signature: string;
+  createdAt: number;
+  lastLoginAt: number;
 }
 
 // API 请求/回應類型

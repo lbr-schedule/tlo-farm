@@ -10,7 +10,8 @@ interface AuthContextType {
   logout: () => void;
   refreshAccessToken: () => Promise<boolean>;
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
-  clearAuth: () => void; // 只清除 state，不呼叫伺服器
+  clearAuth: () => void;
+  updateUser: (partial: Partial<UserProfile>) => void;
 }
 
 // ── 驗證 token 是否有效（不觸發 navigate）──
@@ -109,6 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRefreshToken(data.refreshToken);
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
+        // Update user with fresh data from refresh response
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         return true;
       }
 
@@ -116,6 +122,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return false;
     }
+  };
+
+  const updateUser = (partial: Partial<UserProfile>) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...partial };
+      localStorage.setItem('user', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // ── 自動處理401 的 fetch 包裝函式 ──
@@ -130,6 +145,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let response = await fetch(url, { ...options, headers });
+
+    // ── 當 response.ok === false 時，讀取並印出 error body ──
+    if (response.ok === false) {
+      const clone = response.clone();
+      const errorText = await response.text();
+      console.error('[API ERROR BODY]', url, 'status:', response.status, 'body:', errorText);
+      // 把 clone 設回 response，这样 caller 还能再读
+      response = clone;
+    }
 
     if (response.status === 401) {
       console.log('[Auth] Token過期，嘗試刷新...');
@@ -160,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         clearAuth,
         refreshAccessToken,
+        updateUser,
         authFetch,
       }}
     >

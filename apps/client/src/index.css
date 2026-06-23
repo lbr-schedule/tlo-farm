@@ -53,3 +53,29 @@ button {
 .animate-shake { animation: shake 0.5s ease-in-out; }
 .animate-slide-in { animation: slideIn 0.4s ease-out 0.4s both; }
 .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+
+/* 道具 icon 統一樣式 */
+.item-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+}
+
+/* 普通肥料專用：視覺置中 */
+.fertilizer-icon {
+  width: 56px !important;
+  height: 56px !important;
+  transform: translate(3px, -4px);
+}
+
+/* 商店商品 icon - 固定 48x48 */
+.shop-item-icon {
+  width: 48px !important;
+  height: 48px !important;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+  flex-shrink: 0;
+}

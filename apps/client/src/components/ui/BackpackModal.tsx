@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import PixelWindow from './PixelWindow';
 import { backpackSystem, BackpackItem } from '../../systems/BackpackSystem';
+import { getInventoryIcon, FALLBACK_ICON } from '../../utils/inventoryIcons';
+
+const DEBUG = false;
+console.log('[FERTILIZER ICON FIX ACTIVE] BackpackModal');
 
 interface BackpackModalProps {
   onClose: () => void;
@@ -13,7 +17,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
   const [loading, setLoading] = useState(true);
   const [selling, setSelling] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'seed' | 'crop'>('seed');
+  const [activeTab, setActiveTab] = useState<'seed' | 'crop' | 'livestock' | 'item'>('crop');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -29,7 +33,12 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
   // ── 訂閱背包資料 ──
   useEffect(() => {
     const unsub = backpackSystem.subscribe((state) => {
-      const list = activeTab === 'seed' ? state.seeds : state.crops;
+      let list: BackpackItem[] = [];
+      if (activeTab === 'seed') list = state.seeds;
+      else if (activeTab === 'crop') list = state.crops;
+      else if (activeTab === 'livestock') list = state.livestock;
+      else if (activeTab === 'item') list = state.items;
+      if (DEBUG) { console.log('[BACKPACK MODAL DATA]', { seeds: state.seeds, crops: state.crops, items: state.items, loading: state.loading }); }
       setItems(list);
       setLoading(state.loading);
       setTotalPages(Math.max(1, Math.ceil(list.length / 10)));
@@ -115,18 +124,24 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
 
   return (
     <PixelWindow title="背包" onClose={onClose} width={480}>
-      <div style={{ fontFamily: "'Cubic 11', sans-serif" }}>
-        {/* 分頁 Tab */}
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-          <PixelButton onClick={() => { setActiveTab('seed'); setPage(1); }} disabled={activeTab === 'seed'}>
-            種子
-          </PixelButton>
+      <div style={{ fontFamily: "'Cubic 11', sans-serif", display: 'flex', flexDirection: 'column', maxHeight: '80vh', minHeight: 0, overflow: 'hidden' }}>
+        {/* 分頁 Tab（固定不滑動） */}
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexShrink: 0 }}>
           <PixelButton onClick={() => { setActiveTab('crop'); setPage(1); }} disabled={activeTab === 'crop'}>
             作物
           </PixelButton>
+          <PixelButton onClick={() => { setActiveTab('seed'); setPage(1); }} disabled={activeTab === 'seed'}>
+            種子
+          </PixelButton>
+          <PixelButton onClick={() => { setActiveTab('livestock'); setPage(1); }} disabled={activeTab === 'livestock'}>
+            畜牧
+          </PixelButton>
+          <PixelButton onClick={() => { setActiveTab('item'); setPage(1); }} disabled={activeTab === 'item'}>
+            道具
+          </PixelButton>
         </div>
 
-        {/* 訊息 */}
+        {/* 訊息（固定不滑動） */}
         {message && (
           <div style={{
             background: message.includes('失敗') || message.includes('不足') || message.includes('錯誤') ? '#C0392B' : '#27AE60',
@@ -137,22 +152,35 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
             fontSize: '14px',
             border: '3px solid #3d2518',
             textAlign: 'center',
+            flexShrink: 0,
           }}>
             {message}
           </div>
         )}
 
-        {/* 空狀態 */}
-        {items.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#8B6914', fontSize: '15px' }}>
-            {activeTab === 'seed' ? '還沒有種子，去商店購買吧！' : '還沒有作物，先去種田吧！'}
-          </div>
-        )}
+        {/* 物品列表（可滑動） */}
+        <div className="backpack-scroll" style={{
+          overflowY: 'auto',
+          maxHeight: '420px',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+        }}>
+          {/* 空狀態 */}
+          {items.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#8B6914', fontSize: '15px' }}>
+              {activeTab === 'seed' ? '還沒有種子，去商店購買吧！' : activeTab === 'crop' ? '還沒有作物，先去種田吧！' : activeTab === 'livestock' ? '還沒有畜牧產品' : '背包裡還沒有道具'}
+            </div>
+          )}
 
-        {/* 物品列表 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {paginatedItems.map(item => (
-            <div key={item.id} style={{
+          {/* 物品 */}
+          {paginatedItems.map(item => {
+            const icon = getInventoryIcon(item);
+            if (DEBUG) { console.log('[BACKPACK ITEM RENDER]', { itemType: item.itemType, itemId: item.itemId, name: item.name, icon, category: activeTab }); }
+            if (item.itemType === 'item' && DEBUG) { console.log('[BACKPACK FERTILIZER RENDER]', { name: item.name, itemType: item.itemType, itemId: item.itemId, icon, category: activeTab, imgWidth: 64, imgHeight: 64 }); }
+            return (
+            <div key={`${item.itemType}-${item.itemId}-${item.name}`} style={{
               background: '#fff',
               border: '4px solid #5C3D2E',
               borderRadius: '2px',
@@ -161,25 +189,34 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
               alignItems: 'center',
               justifyContent: 'space-between',
               boxShadow: '3px 3px 0 #d4c4a8',
+              flexShrink: 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
-                  width: '40px',
-                  height: '40px',
-                  background: activeTab === 'seed' ? '#7EC850' : '#F4D03F',
-                  border: '2px solid #3d2518',
-                  borderRadius: '2px',
+                  width: '56px',
+                  height: '56px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '18px',
                   position: 'relative',
+                  flexShrink: 0,
                 }}>
-                  {activeTab === 'seed' ? 'S' : 'C'}
+                  <img
+                    src={getInventoryIcon(item)}
+                    alt={item.name}
+                    className={item.sprite === '普通肥料.png' ? 'item-icon fertilizer-icon' : 'item-icon'}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = FALLBACK_ICON;
+                      console.warn('[BACKPACK ICON LOAD ERROR]', {
+                        name: item.name,
+                        src: (e.target as HTMLImageElement).src,
+                      });
+                    }}
+                  />
                   <div style={{
                     position: 'absolute',
-                    top: '-8px',
-                    right: '-8px',
+                    top: '-4px',
+                    right: '-4px',
                     background: '#C0392B',
                     color: '#fff',
                     borderRadius: '2px',
@@ -189,6 +226,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                     border: '2px solid #fff',
                     minWidth: '18px',
                     textAlign: 'center',
+                    fontFamily: "'Cubic 11', sans-serif",
                   }}>
                     {item.amount}
                   </div>
@@ -196,11 +234,16 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                 <div>
                   <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>{item.name}</div>
                   <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>
-                    {activeTab === 'seed' ? `時間 ${formatTime(item.growTimeSec)}` : `售價 ${item.sellPrice}`}
+                    {activeTab === 'seed' ? `時間 ${formatTime(item.growTimeSec)}` : activeTab === 'crop' ? `售價 ${item.sellPrice}` : activeTab === 'livestock' ? `持有 ${item.amount} 個` : `持有 ${item.amount} 個`}
                   </div>
                 </div>
               </div>
               {activeTab === 'seed' && (
+                <PixelButton onClick={() => handleUse(item)} variant="success">
+                  使用
+                </PixelButton>
+              )}
+              {activeTab === 'item' && (
                 <PixelButton onClick={() => handleUse(item)} variant="success">
                   使用
                 </PixelButton>
@@ -210,19 +253,30 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                   {selling === item.id ? '賣出中...' : '賣出'}
                 </PixelButton>
               )}
+              {activeTab === 'livestock' && (
+                <PixelButton onClick={() => handleSell(item)} disabled={selling === item.id}>
+                  {selling === item.id ? '賣出中...' : '賣出'}
+                </PixelButton>
+              )}
             </div>
-          ))}
+          );})}
         </div>
 
-        {/* 分頁導航 */}
+        {/* 分頁導航（固定不滑動） */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px', flexShrink: 0 }}>
             <PixelButton onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>上一頁</PixelButton>
             <span style={{ padding: '6px 12px', fontSize: '14px', color: '#5C3D2E' }}>{page} / {totalPages}</span>
             <PixelButton onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>下一頁</PixelButton>
           </div>
         )}
       </div>
+      <style>{`
+        .backpack-scroll::-webkit-scrollbar { width: 12px; }
+        .backpack-scroll::-webkit-scrollbar-track { background: #E8D6B5; border: 2px solid #4A2D16; }
+        .backpack-scroll::-webkit-scrollbar-thumb { background: #7A4A22; border: 2px solid #4A2D16; border-radius: 2px; }
+        .backpack-scroll::-webkit-scrollbar-thumb:hover { background: #8B5A2B; }
+      `}</style>
     </PixelWindow>
   );
 }

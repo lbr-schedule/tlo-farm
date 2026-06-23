@@ -7,6 +7,11 @@ import { authMiddleware } from './middleware/auth';
 import farmRouter from './routes/farm';
 import shopRouter from './routes/shop';
 import inventoryRouter from './routes/inventory';
+import ordersRouter from './routes/orders';
+import tasksRouter from './routes/tasks';
+import playerRouter from './routes/player';
+import eventsRouter from './routes/events';
+import animalsRouter from './routes/animals';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,6 +22,10 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// 開放上傳資料夾（開發環境用）
+const UPLOADS_DIR = path.join(process.cwd(), '../client/public/uploads');
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // 健康檢查
 app.get('/health', (_req, res) => {
@@ -44,6 +53,11 @@ app.get('/api/farm/crops', async (_req, res) => {
 app.use('/api/farm', authMiddleware, farmRouter);
 app.use('/api/shop', authMiddleware, shopRouter);
 app.use('/api/inventory', authMiddleware, inventoryRouter);
+app.use('/api/orders', authMiddleware, ordersRouter);
+app.use('/api/tasks', authMiddleware, tasksRouter);
+app.use('/api/player', authMiddleware, playerRouter);
+app.use('/api/events', authMiddleware, eventsRouter);
+app.use('/api/animals', authMiddleware, animalsRouter);
 
 // Serve client static files in production
 if (process.env.NODE_ENV === 'production') {

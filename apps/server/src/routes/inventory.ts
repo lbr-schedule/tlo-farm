@@ -23,7 +23,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     let filteredItems = itemsResult.rows || [];
     
     // 過濾類型
-    if (type && (type === 'seed' || type === 'crop')) {
+    if (type && (type === 'seed' || type === 'crop' || type === 'item' || type === 'livestock')) {
       filteredItems = filteredItems.filter((item: any) => item.itemType === type);
     }
 
@@ -33,32 +33,62 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const start = (pageNum - 1) * limitNum;
     const paginatedItems = filteredItems.slice(start, start + limitNum);
 
-    // 取得作物詳細資料
-    const cropIds = paginatedItems.map((item: any) => item.itemId);
-    let cropList: any[] = [];
-    if (cropIds.length > 0) {
-      const placeholders = cropIds.map(() => '?').join(',');
-      const cropResult = await db.execute(
-        `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, sprite FROM crops WHERE id IN (${placeholders})`,
-        cropIds
-      );
-      cropList = cropResult.rows || [];
+    // 取得詳細資料（根據類型查詢不同表格）
+    const itemIds = paginatedItems.map((item: any) => item.itemId);
+    let detailMap = new Map();
+    
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(',');
+      
+      if (type === 'item') {
+        // 查詢 items 表格
+        const itemResult = await db.execute(
+          `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice, sprite FROM items WHERE id IN (${placeholders})`,
+          itemIds
+        );
+        const itemList = itemResult.rows || [];
+        detailMap = new Map(itemList.map((i: any) => [i.id, i]));
+      } else {
+        // 查詢 crops 表格
+        const cropResult = await db.execute(
+          `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, sprite FROM crops WHERE id IN (${placeholders})`,
+          itemIds
+        );
+        const cropList = cropResult.rows || [];
+        detailMap = new Map(cropList.map((c: any) => [c.id, c]));
+      }
     }
 
-    const cropMap = new Map(cropList.map((c: any) => [c.id, c]));
-
     // 組合背包資料
+    // 畜牧物品靜態資料
+    const livestockItems: Record<number, { nameZhTw: string; sprite: string; sellPrice: number }> = {
+      1: { nameZhTw: '雞蛋', sprite: 'egg.png', sellPrice: 5 },
+      2: { nameZhTw: '普通飼料', sprite: 'feed_normal.png', sellPrice: 0 },
+    };
     const inventoryWithDetails = paginatedItems.map((item: any) => {
-      const crop = cropMap.get(item.itemId);
+      if (item.itemType === 'livestock') {
+        const info = livestockItems[item.itemId] || { nameZhTw: '未知畜牧品', sprite: '', sellPrice: 0 };
+        return {
+          id: item.id,
+          itemType: item.itemType,
+          itemId: item.itemId,
+          amount: item.amount,
+          name: info.nameZhTw,
+          sprite: info.sprite,
+          sellPrice: info.sellPrice,
+          growTimeSec: 0
+        };
+      }
+      const detail = detailMap.get(item.itemId);
       return {
         id: item.id,
         itemType: item.itemType,
         itemId: item.itemId,
         amount: item.amount,
-        name: crop?.nameZhTw || '未知物品',
-        sprite: crop?.sprite || '',
-        sellPrice: crop?.sellPrice || 0,
-        growTimeSec: crop?.growTimeSec || 0
+        name: detail?.nameZhTw || '未知物品',
+        sprite: detail?.sprite || '',
+        sellPrice: detail?.sellPrice || 0,
+        growTimeSec: detail?.growTimeSec || 0
       };
     });
 
