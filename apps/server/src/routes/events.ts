@@ -15,17 +15,19 @@ const DAILY_REWARDS = [
   { day: 7, type: 'diamond', itemId: null, amount: 1, label: '鑽石 ×1' },
 ];
 
-// Helper: get today's date string
+// Helper: get today's date string (Asia/Taipei UTC+8)
 function getTodayStr(): string {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const taipeiDateStr = now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+  return taipeiDateStr;
 }
 
-// Helper: get yesterday's date string
+// Helper: get yesterday's date string (Asia/Taipei UTC+8)
 function getYesterdayStr(): string {
   const now = new Date();
   now.setDate(now.getDate() - 1);
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const taipeiDateStr = now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+  return taipeiDateStr;
 }
 
 // GET /api/events/daily-login - Get current daily login status

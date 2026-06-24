@@ -3266,7 +3266,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     const container = this.add.container(0, 0);
     container.setDepth(9999);
-    container.setInteractive(false);
 
     // Tooltip 尺寸
     const paddingX = 14;

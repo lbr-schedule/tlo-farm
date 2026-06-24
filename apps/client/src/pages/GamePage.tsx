@@ -126,8 +126,13 @@ export default function GamePage() {
 
     const markLoginTask = async () => {
       try {
-        await authFetch('/api/tasks/login', { method: 'POST' });
-        console.log('[Tasks] Login task marked');
+        const res = await authFetch('/api/tasks/login', { method: 'POST' });
+        const result = await res.json();
+        if (result.success === true) {
+          console.log('[Tasks] Login task marked');
+        } else {
+          console.warn('[Tasks] Login task failed:', result.message);
+        }
       } catch (e) {
         console.warn('[Tasks] Failed to mark login task:', e);
       }
