@@ -168,6 +168,7 @@ export default class FarmScene extends Phaser.Scene {
   private isFarmActionMenuOpen: boolean = false;
   private seedPopup: Phaser.GameObjects.Container | null = null;
   private seedPopupOverlay: Phaser.GameObjects.Graphics | null = null;
+  private cropTooltip: Phaser.GameObjects.Container | null = null;
 
   private _frameCount: number = 0;
   private FARM_SIZE = 180;
@@ -371,6 +372,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
 
       farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
+      farmContainer.on('pointerover', () => this.showCropTooltip(i));
+      farmContainer.on('pointermove', (pointer: Phaser.Input.Pointer) => this.moveCropTooltip(pointer));
+      farmContainer.on('pointerout', () => this.hideCropTooltip());
 
       this.tiles.set(`${i}`, farmContainer);
       this.farmlandObjects.push(farmContainer);
@@ -3250,9 +3254,92 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ============================================================
+  // 農作物 hover tooltip
+  // ============================================================
+  private showCropTooltip(index: number) {
+    const state = this.farmState.get(index);
+    const cropName = state?.cropId
+      ? (getCropDetails(state.cropId)?.nameZhTw ?? '作物')
+      : '空農地';
+
+    this.hideCropTooltip();
+
+    const container = this.add.container(0, 0);
+    container.setDepth(9999);
+    container.setInteractive(false);
+
+    // Tooltip 尺寸
+    const paddingX = 14;
+    const paddingY = 8;
+    const lineHeight = 22;
+    const fontSize = 15;
+
+    // 建立文字（先用同樣樣式測量）
+    const measureText = this.add.text(0, 0, cropName, {
+      fontFamily: '"Cubic 11", "俐方體11號", monospace',
+      fontSize: `${fontSize}px`,
+      color: '#3d2010',
+    });
+    const textWidth = measureText.width;
+    const textHeight = measureText.height;
+    measureText.destroy();
+
+    const bw = textWidth + paddingX * 2;
+    const bh = textHeight + paddingY * 2;
+
+    // 奶油色背景 + 深咖啡色框
+    const bg = this.add.graphics();
+    bg.fillStyle(0xfff8dc, 1);      // 奶油色 #fff8dc
+    bg.fillRoundedRect(0, 0, bw, bh, 4);
+    bg.lineStyle(2, 0x5c3d2e, 1);   // 深咖啡色 #5c3d2e
+    bg.strokeRoundedRect(0, 0, bw, bh, 4);
+
+    const label = this.add.text(paddingX, paddingY, cropName, {
+      fontFamily: '"Cubic 11", "俐方體11號", monospace',
+      fontSize: `${fontSize}px`,
+      color: '#3d2010',
+    });
+
+    container.add([bg, label]);
+    container.setPosition(99999, 99999); // 先藏起來，等 pointermove
+    this.cropTooltip = container;
+
+    // 立即跟著目前指標位置
+    const ptr = this.input.activePointer;
+    if (ptr) {
+      this.moveCropTooltip(ptr);
+    }
+  }
+
+  private moveCropTooltip(pointer: Phaser.Input.Pointer) {
+    if (!this.cropTooltip) return;
+    const x = pointer.x + 18;
+    const y = pointer.y - 50;
+    // 簡單超界檢查
+    if (x + 150 > this.scale.width) {
+      this.cropTooltip.setX(pointer.x - 150);
+    } else {
+      this.cropTooltip.setX(x);
+    }
+    if (y < 10) {
+      this.cropTooltip.setY(pointer.y + 20);
+    } else {
+      this.cropTooltip.setY(y);
+    }
+  }
+
+  private hideCropTooltip() {
+    if (this.cropTooltip) {
+      this.cropTooltip.destroy();
+      this.cropTooltip = null;
+    }
+  }
+
+  // ============================================================
   // 清除所有彈窗
   // ============================================================
   private clearAllPopups() {
+    this.hideCropTooltip();
     // 0. 取消雞舍放置模式
     if (this.coopPlacementMode) {
       this.cancelCoopPlacement('clearAllPopups');
