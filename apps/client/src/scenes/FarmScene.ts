@@ -359,12 +359,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       farmContainer.add(soilImg);
 
       const isLocked = i >= 6; // 第 6, 7 塊（index 6,7）預設鎖定
-      const lockText = this.add.text(0, 0, '🔒', {
-        fontSize: '32px',
-      });
-      lockText.setOrigin(0.5, 0.5);
-      farmContainer.add(lockText);
       if (isLocked) {
+        const lockText = this.add.text(0, 0, '🔒', {
+          fontSize: '32px',
+        });
+        lockText.setOrigin(0.5, 0.5);
+        farmContainer.add(lockText);
         farmContainer.setAlpha(0.5);
       }
 
@@ -547,10 +547,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           this.userLevel = data.user.level;
           // 等級 8 時自動解鎖額外農地
           if (this.userLevel >= 8 && oldLevel < 8 && oldLevel > 0) {
-            this.unlockExtraFarms();
-          }
-          // 等級已達 8 但農地尚未解鎖（頁面重新整理）
-          if (this.userLevel >= 8 && oldLevel === 1) {
             this.unlockExtraFarms();
           }
         }
