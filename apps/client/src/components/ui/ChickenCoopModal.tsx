@@ -130,7 +130,12 @@ export default function ChickenCoopModal({ onClose, userGold, onGoldUpdate }: Ch
         setMessageType('ok');
         setGold(data.user?.gold ?? gold);
         onGoldUpdate?.(data.user?.gold ?? gold);
+        // 等背包刷新完成後再重算飼料數
+        await backpackSystem.fetchAll();
         await fetchStatus();
+        const items = backpackSystem.getState().items;
+        const feed = items.find((i: any) => i.itemId === FEED_ITEM_ID);
+        setFeedCount(feed?.amount ?? 0);
       } else {
         setMessage(data.message || '餵食失敗');
         setMessageType('err');
@@ -166,7 +171,11 @@ export default function ChickenCoopModal({ onClose, userGold, onGoldUpdate }: Ch
         setMessageType('ok');
         setGold(data.user?.gold ?? gold);
         onGoldUpdate?.(data.user?.gold ?? gold);
+        await backpackSystem.fetchAll();
         await fetchStatus();
+        const items = backpackSystem.getState().items;
+        const feed = items.find((i: any) => i.itemId === FEED_ITEM_ID);
+        setFeedCount(feed?.amount ?? 0);
       } else {
         setMessage(data.message || '餵食失敗');
         setMessageType('err');
@@ -197,6 +206,7 @@ export default function ChickenCoopModal({ onClose, userGold, onGoldUpdate }: Ch
         setMessageType('ok');
         setGold(data.user?.gold ?? gold);
         onGoldUpdate?.(data.user?.gold ?? gold);
+        await backpackSystem.fetchAll();
         await fetchStatus();
       } else {
         setMessage(data.message || '領取失敗');

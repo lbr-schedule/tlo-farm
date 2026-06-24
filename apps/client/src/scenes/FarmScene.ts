@@ -2695,106 +2695,73 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 餵食按鈕 handler ──
   private handleFeedChickenCoop(panelEl: HTMLDivElement) {
-    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-    const coop = JSON.parse(coopRaw);
-    const animalCount = (coop.animals ?? []).length;
-    const requiredFeed = animalCount;
-    if (coop.feedingStatus === 'fed') { this.events.emit('game-toast', '已餵食,請等待倒數完成'); return; }
-    if (animalCount <= 0) { this.events.emit('game-toast', '雞舍裡沒有雞'); return; }
+    (async () => {
+      const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
+      if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
+      const coop = JSON.parse(coopRaw);
+      const animalCount = (coop.animals ?? []).length;
+      if (coop.feedingStatus === 'fed') { this.events.emit('game-toast', '已餵食，請等待倒數完成'); return; }
+      if (animalCount <= 0) { this.events.emit('game-toast', '雞舍裡沒有雞'); return; }
 
-    const LIVESTOCK_KEY = 'tlo_farm_inventory_livestock';
-    const stored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
-    const state = backpackSystem.getState();
-    const itemsState = state.items;
-
-    // （fields already validated via isBasicFeed check above）
-
-    const getItemDisplayName = (item: any) =>
-      String(item.nameZhTw ?? item.itemName ?? item.displayName ?? item.name ?? item.title ?? '');
-    const getItemKey = (item: any) =>
-      String(item.itemId ?? item.key ?? item.id ?? '');
-    const getItemQuantity = (item: any) =>
-      Number(item.quantity ?? item.count ?? item.amount ?? 0);
-    const isBasicFeed = (item: any) => {
-      const name = getItemDisplayName(item);
-      const key = getItemKey(item);
-      return key === 'feed_basic' || key === 'basic_feed' || key === 'normal_feed' ||
-        key === '普通飼料' || name === '普通飼料' || name.includes('普通飼料');
-    };
-
-    const feedFromLivestock = stored.find(isBasicFeed);
-    const feedFromItems = itemsState.find(isBasicFeed);
-    const feedItem = feedFromLivestock ?? feedFromItems;
-
-    if (!feedItem) {
-      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 0 包`);
-      return;
-    }
-
-    const feedBefore = getItemQuantity(feedItem);
-    if (feedBefore < requiredFeed) {
-      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 ${feedBefore} 包`);
-      return;
-    }
-
-    const feedAfter = feedBefore - requiredFeed;
-    if (feedFromLivestock) {
-      backpackSystem.updateLivestockItem(Number(feedFromLivestock.itemId), -requiredFeed);
-    } else {
-      backpackSystem.deductItem('item', 2);
-      const livestockStored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
-      const lIdx = livestockStored.findIndex((item: any) => isBasicFeed(item));
-      if (lIdx !== -1) livestockStored[lIdx].amount = feedAfter;
-      else livestockStored.push({ id: 0, itemType: 'livestock', itemId: 2, amount: feedAfter, name: '普通飼料', sprite: 'feed_normal.png', sellPrice: 0, growTimeSec: 0 });
-      localStorage.setItem(LIVESTOCK_KEY, JSON.stringify(livestockStored));
-    }
-
-
-    coop.feedingStatus = 'fed';
-    coop.lastFedAt = Date.now();
-    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-    window.dispatchEvent(new Event('inventory-updated'));
-    this.refreshCoopPanelStatus(panelEl);
-
-    try {
-      const res = authFetch('/api/animals/chicken-coop/feed-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (err) {
-      // API failed, local feed already applied
-    }
+      try {
+        const res = await authFetch('/api/animals/chicken-coop/feed-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.events.emit('game-toast', data.message || '餵食成功');
+          // 更新本地雞舍狀態（餵食後進入倒數）
+          coop.feedingStatus = 'fed';
+          coop.lastFedAt = Date.now();
+          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
+          // 刷新背包
+          window.dispatchEvent(new Event('inventory-updated'));
+          backpackSystem.fetchAll();
+          this.refreshCoopPanelStatus(panelEl);
+        } else {
+          this.events.emit('game-toast', data.message || '餵食失敗：普通飼料不足');
+        }
+      } catch {
+        this.events.emit('game-toast', '餵食失敗，請稍後再試');
+      }
+    })();
   }
 
   // ── 收雞蛋按鈕 handler ──
   private handleCollectEggs(panelEl: HTMLDivElement) {
-    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-    const coop = JSON.parse(coopRaw);
-    const eggs = Number(coop.eggCount || 0);
-    if (eggs <= 0) { this.events.emit('game-toast', '目前沒有可收雞蛋'); return; }
+    (async () => {
+      const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
+      if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
+      const coop = JSON.parse(coopRaw);
+      const eggs = Number(coop.eggCount || 0);
+      if (eggs <= 0) { this.events.emit('game-toast', '目前沒有可收雞蛋'); return; }
 
-    let apiSuccess = false;
-    try {
-      const res = authFetch('/api/animals/chicken-coop/collect-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eggCount: eggs }),
-      });
-      const result = res as any;
-      if (result.success) { apiSuccess = true; }
-    } catch (err: any) {
-      // API failed, running local-only flow
-    }
-
-    const before = [...backpackSystem.getState().livestock];
-    backpackSystem.updateLivestockItem(1, eggs);
-
-    coop.eggCount = 0;
-    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-    window.dispatchEvent(new Event('inventory-updated'));
-    this.refreshCoopPanelStatus(panelEl);
+      try {
+        const res = await authFetch('/api/animals/chicken-coop/collect-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eggCount: eggs }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.events.emit('game-toast', data.message || `收到 ${data.collectedCount ?? eggs} 個雞蛋`);
+          // 清空本地雞舍雞蛋計數（避免重複收）
+          coop.eggCount = 0;
+          coop.feedingStatus = 'none';
+          coop.lastFedAt = null;
+          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
+          // 刷新背包
+          window.dispatchEvent(new Event('inventory-updated'));
+          backpackSystem.fetchAll();
+          this.refreshCoopPanelStatus(panelEl);
+        } else {
+          this.events.emit('game-toast', data.message || '領取雞蛋失敗');
+        }
+      } catch {
+        this.events.emit('game-toast', '領取雞蛋失敗，請稍後再試');
+      }
+    })();
   }
 
   // ── DEV 立即產蛋 handler ──
