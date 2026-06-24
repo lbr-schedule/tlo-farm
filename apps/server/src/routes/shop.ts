@@ -471,7 +471,7 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
       await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
 
       const existingResult = await db.execute(
-        `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
+        `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
         [userId, FEED_ITEM_ID]
       );
       const existingItem = existingResult.rows?.[0];
@@ -479,7 +479,7 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
         await db.execute(`UPDATE inventories SET amount = amount + ? WHERE id = ?`, [amount, existingItem.id]);
       } else {
         await db.execute(
-          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'livestock', ?, ?)`,
+          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'item', ?, ?)`,
           [userId, FEED_ITEM_ID, amount]
         );
       }
@@ -599,7 +599,7 @@ router.post('/sell-livestock', async (req: AuthRequest, res: Response) => {
 
     // 畜牧物品靜態資料
     const livestockItems: Record<number, { nameZhTw: string; sellPrice: number }> = {
-      1: { nameZhTw: '雞蛋', sellPrice: 5 },
+      9: { nameZhTw: '雞蛋', sellPrice: 5 },
     };
     const info = livestockItems[itemId];
     if (!info) return res.status(404).json({ success: false, message: '畜牧物品不存在' });
