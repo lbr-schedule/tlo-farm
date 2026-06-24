@@ -193,10 +193,15 @@ class BackpackSystem {
       ]);
       // Merge：localStorage 永遠是事實來源（本地操作的紀錄）
       // API 結果只用來補充 localStorage 沒有的 itemId
+      // 注意：itemId=1 在 items 表是普通肥料，在 crops 表是小麥，不是雞蛋
+      //       若 localStorage 有 itemId=1 的殘留資料，直接忽略（避免假雞蛋顯示）
       const mergedMap = new Map<string, BackpackItem>();
-      // 先放 localStorage（保留本地所有操作）
       const localSaved = this.loadLivestockLocal();
       for (const localItem of localSaved) {
+        if (localItem.itemId === 1) {
+          // itemId=1 不是雞蛋，是小麥/肥料，忽略並清除
+          continue;
+        }
         mergedMap.set(String(localItem.itemId), { ...localItem });
       }
       // 再用 API 結果補充（只加 API 有而 localStorage 沒有的）
@@ -231,7 +236,12 @@ class BackpackSystem {
         localStorage.setItem(MIGRATION_KEY, '1');
       }
       const mergedLivestock = Array.from(mergedMap.values());
+      // 同步清理後的 livestock 回 localStorage（去除 itemId=1 假雞蛋殘留）
       this.setState({ seeds, crops, items: itemsWithoutFeed, livestock: mergedLivestock, loading: false });
+      // 立即寫回 localStorage（下次 fetchAll 不會重複出現假雞蛋）
+      try {
+        localStorage.setItem(BackpackSystem.LIVESTOCK_STORAGE_KEY, JSON.stringify(mergedLivestock));
+      } catch (e) { /* ignore */ }
     } catch (err: any) {
       this.setState({ loading: false, error: err.message, livestock: this.state.livestock });
     }

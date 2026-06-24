@@ -275,47 +275,29 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
 
     // ── 普通飼料：直接寫入 livestock localStorage（不走小雞邏輯）──
     const isFeed = item.id === 'feed_normal' || item.nameZhTw === '普通飼料';
-    console.log('[BUY FEED CHECK]', {
-      itemId: item.id,
-      itemIdType: typeof item.id,
-      nameZhTw: item.nameZhTw,
-      isFeed,
-      item: JSON.parse(JSON.stringify(item)),
-    });
     if (isFeed) {
-      console.log('[BUY FEED SUCCESS]', { item, amount: 1 });
+      // ── 普通飼料：走 API（寫入 item_type=item，item_id=2）──
       setBuying(item.id);
       setMessage('');
-
-      // 扣金幣
-      const newGold = userGoldState - item.buyPrice;
-      setUserGoldState(newGold);
-      onPurchaseSuccess(newGold, '購買成功！');
-
-      // 寫入 tlo_farm_inventory_livestock（與雞蛋同一份）
-      const LIVESTOCK_KEY = 'tlo_farm_inventory_livestock';
-      const stored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
-      const feedIdx = stored.findIndex((i: any) => i.itemId === 2 || i.name === '普通飼料');
-      const amount = 1;
-      if (feedIdx !== -1) {
-        stored[feedIdx].amount += amount;
-      } else {
-        stored.push({
-          id: 0,
-          itemType: 'livestock',
-          itemId: 2,
-          amount,
-          name: '普通飼料',
-          sprite: 'feed_normal.png',
-          sellPrice: 0,
-          growTimeSec: 0,
+      try {
+        const res = await authFetch('/api/shop/buy-livestock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ livestockKey: item.id, amount: 1 }),
         });
+        const data = await res.json();
+        if (data.success) {
+          setMessage(data.message);
+          setUserGoldState(data.user.gold);
+          onPurchaseSuccess(data.user.gold, data.message);
+        } else {
+          setMessage(data.message || '購買失敗');
+        }
+      } catch {
+        setMessage('網路錯誤');
+      } finally {
+        setBuying(null);
       }
-      localStorage.setItem(LIVESTOCK_KEY, JSON.stringify(stored));
-      console.log('[SAVE LIVESTOCK INVENTORY FEED]', { amount, stored });
-      window.dispatchEvent(new Event('inventory-updated'));
-      setMessage(`購買成功！普通飼料 +${amount}`);
-      setBuying(null);
       return;
     }
 
