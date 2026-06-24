@@ -290,6 +290,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
           setMessage(data.message);
           setUserGoldState(data.user.gold);
           onPurchaseSuccess(data.user.gold, data.message);
+          window.dispatchEvent(new Event('inventory-updated'));
         } else {
           setMessage(data.message || '購買失敗');
         }
@@ -834,7 +835,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                           </div>
                           <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>{item.description}</div>
                           <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>
-                            持有 {livestockCounts[item.id] ?? 0} 個
+                            持有 {(item.id === 'feed_normal' ? itemCounts[2] : livestockCounts[item.id]) ?? 0} 個
                           </div>
                         </div>
                       </div>

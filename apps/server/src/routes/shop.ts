@@ -599,7 +599,7 @@ router.post('/sell-livestock', async (req: AuthRequest, res: Response) => {
 
     // 畜牧物品靜態資料
     const livestockItems: Record<number, { nameZhTw: string; sellPrice: number }> = {
-      9: { nameZhTw: '雞蛋', sellPrice: 5 },
+      9: { nameZhTw: '雞蛋', sellPrice: 30 },
     };
     const info = livestockItems[itemId];
     if (!info) return res.status(404).json({ success: false, message: '畜牧物品不存在' });

@@ -62,7 +62,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     // 組合背包資料
     // 畜牧物品靜態資料
     const livestockItems: Record<number, { nameZhTw: string; sprite: string; sellPrice: number }> = {
-      9: { nameZhTw: '雞蛋', sprite: 'egg.png', sellPrice: 5 },
+      9: { nameZhTw: '雞蛋', sprite: 'egg.png', sellPrice: 30 },
     };
     const inventoryWithDetails = paginatedItems.map((item: any) => {
       if (item.itemType === 'livestock') {
