@@ -36,7 +36,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
       let list: BackpackItem[] = [];
       if (activeTab === 'seed') list = state.seeds;
       else if (activeTab === 'crop') list = state.crops;
-      else if (activeTab === 'livestock') list = state.livestock;
+      else if (activeTab === 'livestock') list = state.livestock.filter(i => i.itemId !== 2 && i.itemId !== 1);
       else if (activeTab === 'item') list = state.items;
       if (DEBUG) { console.log('[BACKPACK MODAL DATA]', { seeds: state.seeds, crops: state.crops, items: state.items, loading: state.loading }); }
       setItems(list);
@@ -55,9 +55,11 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
   };
 
   const handleSell = async (item: BackpackItem) => {
+    const sellId = item.itemId ?? item.item_id ?? item.id;
+    console.warn('[SELL EGG FINAL REQUEST]', { sellId, item, requestBody: { itemId: sellId, itemType: 'livestock', amount: 1 } });
     setSelling(item.id);
     setMessage('');
-    const result = await backpackSystem.sellItem(item.id);
+    const result = await backpackSystem.sellItem(sellId);
     if (result.success) {
       setMessage(result.message);
       onSellSuccess(result.newGold, result.message);

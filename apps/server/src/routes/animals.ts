@@ -2,20 +2,19 @@ import { Router, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const CHICKEN_BABY_GROW_TIME = 60;       // seconds
-const CHICKEN_PRODUCTION_TIME = 120;     // seconds
-const CHICKEN_BUY_PRICE = 50;           // gold
-const COOP_PRICE = 500;                 // gold
-const CHICK_FEED_ITEM_ID = 2;           // feed_normal items.id
-const EGG_CROP_ID = 9;                  // egg crop id
+const CHICKEN_BABY_GROW_TIME = 60;   // seconds
+const CHICKEN_PRODUCTION_TIME = 120; // seconds
+const CHICKEN_BUY_PRICE = 50;        // gold
+const COOP_PRICE = 500;              // gold
+const CHICK_FEED_ITEM_ID = 2;        // feed_normal items.id
+const EGG_CROP_ID = 9;               // egg crop id
 const MAX_CHICKEN_SLOTS = 4;
 
 const router = Router();
 
-// ============================================================
-// Helper: 舊表 fallback（chicken_slots）— 永遠保留不刪
-// ============================================================
+// Helper: ensure building + 4 slots exist for user
 async function ensureChickenData(userId: number) {
+  // Upsert building
   const existing = await db.execute(
     `SELECT id FROM chicken_buildings WHERE user_id = ?`, [userId]
   );
@@ -25,6 +24,8 @@ async function ensureChickenData(userId: number) {
       [userId, Date.now()]
     );
   }
+
+  // Ensure 4 slots exist
   for (let i = 0; i < MAX_CHICKEN_SLOTS; i++) {
     const slotCheck = await db.execute(
       `SELECT id FROM chicken_slots WHERE user_id = ? AND slot_index = ?`, [userId, i]
@@ -38,218 +39,42 @@ async function ensureChickenData(userId: number) {
   }
 }
 
-// ============================================================
-// Helper: 確保 animal_slots 有資料（本次新增）
-// 有舊 chicken_slots → 同步過來
-// ============================================================
-async function ensureAnimalSlots(userId: number) {
-  // 確認 chicken_buildings 存在（取 area_id）
-  const cbRows = await db.execute(
-    `SELECT id FROM chicken_buildings WHERE user_id = ?`, [userId]
-  );
-  if (!cbRows.rows || cbRows.rows.length === 0) return;
-  const areaId = cbRows.rows[0].id;
-
-  for (let i = 0; i < MAX_CHICKEN_SLOTS; i++) {
-    const existing = await db.execute(
-      `SELECT id FROM animal_slots WHERE user_id = ? AND area_type = 'chicken_coop' AND slot_index = ?`,
-      [userId, i]
-    );
-    if (existing.rows && existing.rows.length > 0) continue; // 已有，跳過
-
-    // 查 chicken_slots 對應槽位
-    const slotRows = await db.execute(
-      `SELECT state FROM chicken_slots WHERE user_id = ? AND slot_index = ?`,
-      [userId, i]
-    );
-    const slotState = slotRows.rows?.[0]?.state ?? 'EMPTY';
-    const hasChicken = slotState !== 'EMPTY';
-
-    if (hasChicken) {
-      // 建立 animal
-      const growthStage = (slotState === 'BABY') ? 'baby' : 'adult';
-      const insertAnimal = await db.execute(
-        `INSERT INTO animals (user_id, animal_type, animal_name, growth_stage, status, area_type, area_id, slot_index, feed_status, created_at, updated_at)
-         VALUES (?, 'chicken', '小雞', ?, 'normal', 'chicken_coop', ?, ?, 'hungry', unixepoch(), unixepoch())`,
-        [userId, growthStage, areaId, i]
-      );
-      const animalId = insertAnimal.lastInsertRowid;
-
-      // 建立 animal_slots
-      await db.execute(
-        `INSERT INTO animal_slots (user_id, area_type, area_id, slot_index, animal_id, is_unlocked, created_at, updated_at)
-         VALUES (?, 'chicken_coop', ?, ?, ?, 1, unixepoch(), unixepoch())`,
-        [userId, areaId, i, animalId]
-      );
-    } else {
-      // 空槽
-      await db.execute(
-        `INSERT INTO animal_slots (user_id, area_type, area_id, slot_index, animal_id, is_unlocked, created_at, updated_at)
-         VALUES (?, 'chicken_coop', ?, ?, NULL, 1, unixepoch(), unixepoch())`,
-        [userId, areaId, i]
-      );
-    }
-  }
-}
-
-// ============================================================
-// Helper: 從 animal_slots + animals 讀取雞舍狀態（帶舊表 fallback）
-// ============================================================
-async function getChickenSlotsNew(userId: number): Promise<any[]> {
-  const now = Date.now();
-
-  const rows = await db.execute(
-    `SELECT als.id as alsId, als.slot_index as slotIndex, als.animal_id as animalId,
-            a.id as aId, a.animal_name as animalName, a.growth_stage as growthStage,
-            a.feed_status as feedStatus, a.last_fed_at as lastFedAt,
-            a.production_ready_at as productionReadyAt, a.created_at as createdAt
-     FROM animal_slots als
-     LEFT JOIN animals a ON a.id = als.animal_id
-     WHERE als.user_id = ? AND als.area_type = 'chicken_coop'
-     ORDER BY als.slot_index`,
-    [userId]
-  );
-
-  if (!rows.rows || rows.rows.length === 0) return [];
-
-  return rows.rows.map((s: any) => {
-    if (!s.animalId) {
-      // 空槽
-      return {
-        index: s.slotIndex,
-        state: 'EMPTY',
-        feedAppliedAt: null,
-        producedAt: null,
-        animalName: null,
-        growthStage: null,
-        feedStatus: null,
-        lastFedAt: null,
-        productionReadyAt: null,
-      };
-    }
-
-    // 從 animals 取狀態，計算舊版 state
-    let state = 'READY_TO_FEED';
-    if (s.growthStage === 'baby') {
-      // 小雞成長中
-      const createdAt = s.createdAt ? new Date(s.createdAt * 1000).getTime() : now;
-      const elapsed = (now - createdAt) / 1000;
-      if (elapsed < CHICKEN_BABY_GROW_TIME) {
-        state = 'BABY';
-      } else {
-        state = 'READY_TO_FEED';
-      }
-    } else if (s.growthStage === 'adult') {
-      if (s.feedStatus === 'producing') {
-        // 餵食後倒數中
-        const prodAt = s.lastFedAt ? new Date(s.lastFedAt * 1000).getTime() : now;
-        const elapsed = (now - prodAt) / 1000;
-        if (elapsed >= CHICKEN_PRODUCTION_TIME) {
-          state = 'READY_TO_COLLECT';
-        } else {
-          state = 'PRODUCING';
-        }
-      } else {
-        state = 'READY_TO_FEED';
-      }
-    }
-
-    return {
-      index: s.slotIndex,
-      state,
-      feedAppliedAt: s.lastFedAt ? new Date(s.lastFedAt * 1000).getTime() : null,
-      producedAt: s.productionReadyAt ? new Date(s.productionReadyAt * 1000).getTime() : null,
-      animalName: s.animalName,
-      growthStage: s.growthStage,
-      feedStatus: s.feedStatus,
-      lastFedAt: s.lastFedAt ? new Date(s.lastFedAt * 1000).getTime() : null,
-      productionReadyAt: s.productionReadyAt ? new Date(s.productionReadyAt * 1000).getTime() : null,
-    };
-  });
-}
-
-// Helper: 從舊 chicken_slots 讀取（fallback）
-async function getChickenSlotsOld(userId: number): Promise<any[]> {
-  const now = Date.now();
-  const slotRows = await db.execute(
-    `SELECT id, slot_index as slotIndex, state, feed_applied_at as feedAppliedAt,
-            produced_at as producedAt, created_at as createdAt
-     FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`,
-    [userId]
-  );
-
-  // 自動 state transition
-  for (const s of (slotRows.rows || []) as any[]) {
-    if (s.state === 'BABY') {
-      const createdAt = s.createdAt ? new Date(s.createdAt * 1000).getTime() : now;
-      const elapsed = (now - createdAt) / 1000;
-      if (elapsed >= CHICKEN_BABY_GROW_TIME) {
-        await db.execute(
-          `UPDATE chicken_slots SET state = 'READY_TO_FEED', updated_at = ? WHERE id = ?`,
-          [Math.floor(now / 1000), s.id]
-        );
-        s.state = 'READY_TO_FEED';
-      }
-    } else if (s.state === 'PRODUCING') {
-      const feedAt = s.feedAppliedAt ? new Date(s.feedAppliedAt * 1000).getTime() : now;
-      const elapsed = (now - feedAt) / 1000;
-      if (elapsed >= CHICKEN_PRODUCTION_TIME) {
-        await db.execute(
-          `UPDATE chicken_slots SET state = 'READY_TO_COLLECT', produced_at = ?, updated_at = ? WHERE id = ?`,
-          [Math.floor(now / 1000), Math.floor(now / 1000), s.id]
-        );
-        s.state = 'READY_TO_COLLECT';
-      }
-    }
-  }
-
-  return (slotRows.rows || []).map((s: any) => ({
-    index: s.slotIndex,
-    state: s.state,
-    feedAppliedAt: s.feedAppliedAt ? new Date(s.feedAppliedAt).getTime() : null,
-    producedAt: s.producedAt ? new Date(s.producedAt).getTime() : null,
-  }));
-}
-
-// ============================================================
-// GET /api/animals/chicken-coop
-// ============================================================
+// GET /api/animals/chicken-coop — get coop status
 router.get('/chicken-coop', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
     await ensureChickenData(userId);
-    await ensureAnimalSlots(userId);
-
-    // 先嘗試新表
-    let slots = await getChickenSlotsNew(userId);
-    let usingNew = slots.length > 0;
-
-    // fallback 舊表
-    if (!usingNew) {
-      slots = await getChickenSlotsOld(userId);
-    }
 
     const buildingRows = await db.execute(
-      `SELECT id, unlocked_at as unlockedAt, tile_x as tileX, tile_y as tileY, created_at as createdAt FROM chicken_buildings WHERE user_id = ?`,
-      [userId]
+      `SELECT id, unlocked_at as unlockedAt, tile_x as tileX, tile_y as tileY, created_at as createdAt FROM chicken_buildings WHERE user_id = ?`, [userId]
     );
     const building = buildingRows.rows[0];
 
+    const slotRows = await db.execute(
+      `SELECT id, slot_index as slotIndex, state, feed_applied_at as feedAppliedAt, produced_at as producedAt FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`, [userId]
+    );
+
+    const slots = slotRows.rows.map((s: any) => ({
+      index: s.slotIndex,
+      state: s.state,
+      feedAppliedAt: s.feedAppliedAt ? new Date(s.feedAppliedAt).getTime() : null,
+      producedAt: s.producedAt ? new Date(s.producedAt).getTime() : null,
+    }));
+
+    // Get current gold
     const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
     const currentGold = goldRows.rows[0]?.gold ?? 0;
 
-    return res.json({ success: true, building, slots, gold: currentGold, usingNew });
+    return res.json({ success: true, building, slots, gold: currentGold });
   } catch (error) {
     console.error('[Chicken Coop] get error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/place
-// ============================================================
+// POST /api/animals/chicken-coop/place — place chicken coop on farm
 router.post('/chicken-coop/place', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -260,135 +85,234 @@ router.post('/chicken-coop/place', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少座標' });
     }
 
-    await ensureChickenData(userId);
-    await ensureAnimalSlots(userId);
+    // Validate tile bounds
+    if (tileX < 0 || tileX >= 16 || tileY < 0 || tileY >= 16) {
+      return res.status(400).json({ success: false, message: '無效的座標' });
+    }
 
+    // Check if building already placed
+    const existingBuilding = await db.execute(
+      `SELECT id, tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`, [userId]
+    );
+    if (existingBuilding.rows && existingBuilding.rows.length > 0) {
+      const b = existingBuilding.rows[0];
+      // Already placed — return idempotent success with full state (no re-deduction)
+      if (b.tileX !== 0 || b.tileY !== 0 || b.tileX != null) {
+        // Get current gold
+        const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+        const currentGold = goldRows.rows[0]?.gold ?? 0;
+        // Get chicken count
+        const slotRows = await db.execute(
+          `SELECT id FROM chicken_slots WHERE user_id = ? AND state != 'EMPTY'`,
+          [userId]
+        );
+        const chickenCount = slotRows.rows?.length ?? 0;
+        console.log(`[Chicken Coop] Already placed at (${b.tileX}, ${b.tileY}) — idempotent sync for user ${userId}`);
+        return res.json({
+          success: true,
+          alreadyPlaced: true,
+          message: '雞舍已經放置過了',
+          building: { tileX: b.tileX, tileY: b.tileY },
+          gold: currentGold,
+          livestockState: {
+            hasChickenCoop: true,
+            pendingChickenCoop: false,
+            placedChickenCoop: true,
+            chickenCoopCapacity: 4,
+            chickenCount,
+          },
+        });
+      }
+    }
+
+    // Check no conflict with existing farmland tiles (3x2 grid at top-left corner of 16x16)
+    // Farmland occupies x=0,1,2 and y=0,1 (3×2 grid)
+    // Coop is 2×2, check all 4 cells don't overlap with farmland
+    const farmlandCells = [
+      [tileX, tileY], [tileX + 1, tileY],
+      [tileX, tileY + 1], [tileX + 1, tileY + 1]
+    ];
+    for (const [cx, cy] of farmlandCells) {
+      // farmland tiles are at x=0,1,2 and y=0,1
+      if (cx >= 0 && cx <= 2 && cy >= 0 && cy <= 1) {
+        return res.status(400).json({ success: false, message: '雞舍不能放在農地上' });
+      }
+    }
+
+    // Check gold before deduction
+    const goldBeforeRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+    const goldBefore = goldBeforeRows.rows[0]?.gold ?? 0;
+    if (goldBefore < COOP_PRICE) {
+      return res.status(400).json({ success: false, message: '金幣不足' });
+    }
+
+    // Deduct gold
+    await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [COOP_PRICE, userId]);
+
+    // Upsert building with position
     await db.execute(
-      `UPDATE chicken_buildings SET tile_x = ?, tile_y = ?, updated_at = ? WHERE user_id = ?`,
-      [tileX, tileY, Math.floor(Date.now() / 1000), userId]
+      `INSERT INTO chicken_buildings (user_id, tile_x, tile_y, unlocked_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET tile_x = excluded.tile_x, tile_y = excluded.tile_y, updated_at = ?`,
+      [userId, tileX, tileY, Date.now(), Date.now()]
     );
 
-    return res.json({ success: true, message: '雞舍放置成功' });
+    const newGold = goldBefore - COOP_PRICE;
+    console.log(`[Chicken Coop] Placed at (${tileX}, ${tileY}) for user ${userId} — gold ${goldBefore} → ${newGold}`);
+
+    return res.json({
+      success: true,
+      message: `雞舍放置成功！`,
+      building: { tileX, tileY },
+      gold: newGold,
+    });
   } catch (error) {
     console.error('[Chicken Coop] place error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// GET /api/animals/chicken-coop/status
-// ============================================================
+// GET /api/animals/chicken-coop/status — live status with remaining times
 router.get('/chicken-coop/status', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
     await ensureChickenData(userId);
-    await ensureAnimalSlots(userId);
-
-    let slots = await getChickenSlotsNew(userId);
-    let usingNew = slots.length > 0;
-    if (!usingNew) {
-      slots = await getChickenSlotsOld(userId);
-    }
 
     const buildingRows = await db.execute(
-      `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`,
-      [userId]
+      `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`, [userId]
     );
     const building = buildingRows.rows[0];
 
+    const slotRows = await db.execute(
+      `SELECT id, slot_index as slotIndex, state, feed_applied_at as feedAppliedAt, produced_at as producedAt, created_at as createdAt FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`, [userId]
+    );
+
+    const now = Date.now();
+    // Auto-transition states server-side
+    for (const s of slotRows.rows as any[]) {
+      if (s.state === 'BABY') {
+        const createdAt = s.createdAt ? new Date(s.createdAt).getTime() : now;
+        const elapsed = (now - createdAt) / 1000;
+        if (elapsed >= CHICKEN_BABY_GROW_TIME) {
+          await db.execute(
+            `UPDATE chicken_slots SET state = 'READY_TO_FEED', updated_at = ? WHERE id = ?`,
+            [now, s.id]
+          );
+          s.state = 'READY_TO_FEED';
+        }
+      } else if (s.state === 'PRODUCING') {
+        const feedAt = s.feedAppliedAt ? new Date(s.feedAppliedAt).getTime() : now;
+        const elapsed = (now - feedAt) / 1000;
+        if (elapsed >= CHICKEN_PRODUCTION_TIME) {
+          await db.execute(
+            `UPDATE chicken_slots SET state = 'READY_TO_COLLECT', produced_at = ?, updated_at = ? WHERE id = ?`,
+            [now, now, s.id]
+          );
+          s.state = 'READY_TO_COLLECT';
+        }
+      }
+    }
+
+    const slots = slotRows.rows.map((s: any) => {
+      let remainingSec: number | null = null;
+      let progress = 0;
+
+      if (s.state === 'BABY') {
+        const createdAt = s.createdAt ? new Date(s.createdAt).getTime() : now;
+        const elapsed = (now - createdAt) / 1000;
+        const total = CHICKEN_BABY_GROW_TIME;
+        progress = Math.min(1, elapsed / total);
+        remainingSec = Math.max(0, Math.ceil(total - elapsed));
+      } else if (s.state === 'PRODUCING') {
+        const feedAt = s.feedAppliedAt ? new Date(s.feedAppliedAt).getTime() : now;
+        const elapsed = (now - feedAt) / 1000;
+        const total = CHICKEN_PRODUCTION_TIME;
+        progress = Math.min(1, elapsed / total);
+        remainingSec = Math.max(0, Math.ceil(total - elapsed));
+      } else if (s.state === 'READY_TO_FEED' || s.state === 'READY_TO_COLLECT') {
+        progress = 1;
+        remainingSec = 0;
+      }
+
+      return {
+        index: s.slotIndex,
+        state: s.state,
+        progress,
+        remainingSec,
+        feedAppliedAt: s.feedAppliedAt ? new Date(s.feedAppliedAt).getTime() : null,
+        producedAt: s.producedAt ? new Date(s.producedAt).getTime() : null,
+      };
+    });
+
+    // Get current gold
     const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
     const currentGold = goldRows.rows[0]?.gold ?? 0;
 
-    return res.json({ success: true, building, slots, gold: currentGold, usingNew });
+    return res.json({
+      success: true,
+      hasBuilding: !!(building && (building.tileX != null && building.tileX !== 0)),
+      tileX: building?.tileX ?? null,
+      tileY: building?.tileY ?? null,
+      slots,
+      gold: currentGold,
+    });
   } catch (error) {
     console.error('[Chicken Coop] status error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/buy — 買小雞
-// ============================================================
+// POST /api/animals/chicken-coop/buy — buy a baby chick
 router.post('/chicken-coop/buy', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
     await ensureChickenData(userId);
-    await ensureAnimalSlots(userId);
 
-    // ── 容量檢查：只看新表 animals ──────────────────────────────
-    const animalCountRows = await db.execute(
-      `SELECT COUNT(*) as cnt FROM animals WHERE user_id = ? AND area_type = 'chicken_coop'`,
+    // Check if building is placed
+    const buildingRows = await db.execute(
+      `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`, [userId]
+    );
+    const building = buildingRows.rows[0];
+    if (!building || building.tileX == null || building.tileX === 0) {
+      return res.status(400).json({ success: false, message: '請先放置雞舍！' });
+    }
+
+    // Check user gold
+    const userRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+    const user = userRows.rows[0];
+    if (!user || user.gold < CHICKEN_BUY_PRICE) {
+      return res.status(400).json({ success: false, message: `金幣不足！需要 ${CHICKEN_BUY_PRICE} 金幣` });
+    }
+
+    // Find first empty slot
+    const emptySlots = await db.execute(
+      `SELECT id, slot_index as slotIndex FROM chicken_slots WHERE user_id = ? AND state = 'EMPTY' ORDER BY slot_index LIMIT 1`,
       [userId]
     );
-    const currentAnimalCount = animalCountRows.rows[0]?.cnt ?? 0;
-    if (currentAnimalCount >= MAX_CHICKEN_SLOTS) {
-      return res.status(400).json({ success: false, message: '雞舍已滿（4/4）' });
+    if (!emptySlots.rows || emptySlots.rows.length === 0) {
+      return res.status(400).json({ success: false, message: '雞舍已滿！最多容納 4 隻雞' });
     }
+    const emptySlot = emptySlots.rows[0];
 
-    // 檢查 gold
-    const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-    const currentGold = goldRows.rows[0]?.gold ?? 0;
-    if (currentGold < CHICKEN_BUY_PRICE) {
-      return res.status(400).json({ success: false, message: '金幣不足' });
-    }
-
-    // ── 只從新表 animal_slots 找空槽 ─────────────────────────
-    const slotRows = await db.execute(
-      `SELECT als.id as alsId, als.slot_index as slotIndex
-       FROM animal_slots als
-       WHERE als.user_id = ? AND als.area_type = 'chicken_coop' AND als.animal_id IS NULL
-       ORDER BY als.slot_index LIMIT 1`,
-      [userId]
-    );
-
-    if (!slotRows.rows || slotRows.rows.length === 0) {
-      return res.status(400).json({ success: false, message: '雞舍已滿（4/4）' });
-    }
-
-    const slot = slotRows.rows[0];
-    const usingNew = true;
-
-    // 扣金
+    // Deduct gold
     await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [CHICKEN_BUY_PRICE, userId]);
 
-    const now = Math.floor(Date.now() / 1000);
-
-    // 寫新表 animals + animal_slots
-    const areaRows = await db.execute(`SELECT id FROM chicken_buildings WHERE user_id = ?`, [userId]);
-    const areaId = areaRows.rows[0].id;
-
-    const insertAnimal = await db.execute(
-      `INSERT INTO animals (user_id, animal_type, animal_name, growth_stage, status, area_type, area_id, slot_index, feed_status, created_at, updated_at)
-       VALUES (?, 'chicken', '小雞', 'baby', 'normal', 'chicken_coop', ?, ?, 'hungry', ?, ?)`,
-      [userId, areaId, slot.slotIndex, now, now]
-    );
-    const animalId = insertAnimal.lastInsertRowid;
-
-    // 更新 animal_slots
+    // Place chick
     await db.execute(
-      `UPDATE animal_slots SET animal_id = ?, updated_at = ? WHERE id = ?`,
-      [animalId, now, slot.alsId]
+      `UPDATE chicken_slots SET state = 'BABY', baby_born_at = ?, updated_at = ? WHERE id = ?`,
+      [Date.now(), Date.now(), emptySlot.id]
     );
 
-    // 同步寫舊表（維持相容）
-    await db.execute(
-      `UPDATE chicken_slots SET state = 'BABY', baby_born_at = ?, updated_at = ? WHERE user_id = ? AND slot_index = ?`,
-      [now, now, userId, slot.slotIndex]
-    );
-
-    const newGold = currentGold - CHICKEN_BUY_PRICE;
-    console.log(`[CHICKEN BUY] userId=${userId} slot=${slot.slotIndex} animalId=${animalId} usingNew=${usingNew}`);
+    const updatedGold = user.gold - CHICKEN_BUY_PRICE;
 
     return res.json({
       success: true,
-      message: '購買小雞成功！',
-      slotIndex: slot.slotIndex,
-      user: { gold: newGold },
-      usingNew,
+      message: `購買了小雞！花費 ${CHICKEN_BUY_PRICE} 金幣`,
+      slot: { index: emptySlot.slotIndex, state: 'BABY' },
+      gold: updatedGold,
     });
   } catch (error) {
     console.error('[Chicken Coop] buy error:', error);
@@ -396,9 +320,7 @@ router.post('/chicken-coop/buy', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/feed — 餵一隻雞
-// ============================================================
+// POST /api/animals/chicken-coop/feed — feed a chicken
 router.post('/chicken-coop/feed', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -409,141 +331,129 @@ router.post('/chicken-coop/feed', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少 slotIndex' });
     }
 
-    // 檢查背包普通飼料
+    // Check slot state
+    const slotRows = await db.execute(
+      `SELECT id, state FROM chicken_slots WHERE user_id = ? AND slot_index = ?`, [userId, slotIndex]
+    );
+    const slot = slotRows.rows[0];
+    if (!slot) {
+      return res.status(404).json({ success: false, message: '槽位不存在' });
+    }
+    if (slot.state !== 'READY_TO_FEED') {
+      return res.status(400).json({ success: false, message: '這隻雞還不需要餵食' });
+    }
+
+    // Check feed inventory
     const invRows = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
       [userId, CHICK_FEED_ITEM_ID]
     );
-    const inv = invRows.rows?.[0];
-    if (!inv || inv.amount < 1) {
-      return res.status(400).json({ success: false, message: '普通飼料不足！請先購買。' });
+    const invItem = invRows.rows[0];
+    if (!invItem || invItem.amount < 1) {
+      return res.status(400).json({ success: false, message: '背包沒有普通飼料！' });
     }
 
-    const now = Math.floor(Date.now() / 1000);
-
-    // 優先更新新表 animals
-    const animalRows = await db.execute(
-      `SELECT a.id, a.growth_stage as growthStage, a.feed_status as feedStatus
-       FROM animals a
-       JOIN animal_slots als ON als.animal_id = a.id
-       WHERE als.user_id = ? AND als.area_type = 'chicken_coop' AND als.slot_index = ?`,
-      [userId, slotIndex]
-    );
-    let usingNew = !!(animalRows.rows && animalRows.rows.length > 0);
-
-    if (usingNew) {
-      const animal = animalRows.rows[0];
-      if (animal.growthStage !== 'adult') {
-        return res.status(400).json({ success: false, message: '雞還是小雞，無法餵食' });
-      }
-      if (animal.feedStatus === 'producing') {
-        return res.status(400).json({ success: false, message: '這隻雞正在產蛋中' });
-      }
-      await db.execute(
-        `UPDATE animals SET feed_status = 'producing', last_fed_at = ?, updated_at = ? WHERE id = ?`,
-        [now, now, animal.id]
-      );
-    }
-
-    // 同步寫舊表
-    const slotIdRows = await db.execute(
-      `SELECT id FROM chicken_slots WHERE user_id = ? AND slot_index = ?`,
-      [userId, slotIndex]
-    );
-    if (slotIdRows.rows && slotIdRows.rows.length > 0) {
-      await db.execute(
-        `UPDATE chicken_slots SET state = 'PRODUCING', feed_applied_at = ?, updated_at = ? WHERE id = ?`,
-        [now * 1000, now, slotIdRows.rows[0].id]
-      );
-    }
-
-    // 扣飼料
-    if (inv.amount === 1) {
-      await db.execute(`DELETE FROM inventories WHERE id = ?`, [inv.id]);
+    // Consume feed
+    if (invItem.amount === 1) {
+      await db.execute(`DELETE FROM inventories WHERE id = ?`, [invItem.id]);
     } else {
-      await db.execute(`UPDATE inventories SET amount = amount - 1 WHERE id = ?`, [inv.id]);
+      await db.execute(`UPDATE inventories SET amount = amount - 1 WHERE id = ?`, [invItem.id]);
     }
 
-    const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-    return res.json({
-      success: true,
-      message: '餵食成功！雞開始產蛋。',
-      user: { gold: goldRows.rows[0]?.gold ?? 0 },
-      usingNew,
-    });
+    // Update slot to PRODUCING
+    await db.execute(
+      `UPDATE chicken_slots SET state = 'PRODUCING', feed_applied_at = ?, updated_at = ? WHERE id = ?`,
+      [Date.now(), Date.now(), slot.id]
+    );
+
+    return res.json({ success: true, message: '餵食成功！雞開始生蛋了' });
   } catch (error) {
     console.error('[Chicken Coop] feed error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/feed-all
-// ============================================================
+// POST /api/animals/chicken-coop/feed-all — 一次餵完所有 READY_TO_FEED 的雞
 router.post('/chicken-coop/feed-all', async (req: AuthRequest, res: Response) => {
   try {
+    console.log('[FEED-ALL ENTRY]', { userId: req.userId, body: req.body });
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
-    // 檢查背包普通飼料
+    // 確保雞舍資料存在
+    await ensureChickenData(userId);
+
+    // 查出所有槽位狀態（debug 用）
+    const allSlotsResult = await db.execute(
+      `SELECT id, slot_index, state FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`,
+      [userId]
+    );
+    console.log('[FEED-ALL ALL SLOTS]', { userId, slots: allSlotsResult.rows });
+
+    // 找出所有 READY_TO_FEED 的槽位
+    const slotRows = await db.execute(
+      `SELECT id, slot_index FROM chicken_slots WHERE user_id = ? AND state = 'READY_TO_FEED'`,
+      [userId]
+    );
+    const slots = slotRows.rows as { id: number; slot_index: number }[];
+    console.log('[FEED-ALL READY_SLOTS]', { userId, slotsFound: slots.length, slotIds: slots.map(s => s.id) });
+
+    if (slots.length === 0) {
+      return res.status(400).json({ success: false, message: '沒有雞需要餵食' });
+    }
+
+    // 檢查背包普通飼料數量是否足夠
     const invRows = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
       [userId, CHICK_FEED_ITEM_ID]
     );
-    const inv = invRows.rows?.[0];
-    if (!inv || inv.amount < 1) {
-      return res.status(400).json({ success: false, message: '普通飼料不足！請先購買。' });
+    const invItem = invRows.rows[0];
+    const feedBefore = invItem?.amount ?? 0;
+    console.log('[FEED-ALL DEBUG]', {
+      userId,
+      slotsCount: slots.length,
+      feedBefore,
+      feedNeeded: slots.length,
+      invItemId: invItem?.id,
+      invItemType: invItem ? 'item' : 'none',
+    });
+
+    if (feedBefore < slots.length) {
+      return res.status(400).json({
+        success: false,
+        message: `普通飼料不足！需要 ${slots.length} 包，背包有 ${feedBefore} 包`,
+        debug: { feedBefore, slotsNeeded: slots.length }
+      });
     }
 
-    const now = Math.floor(Date.now() / 1000);
-
-    // ── 只從新表 animals 找 READY_TO_FEED 的雞 ─────────────
-    const newRows = await db.execute(
-      `SELECT a.id, als.slot_index as slotIndex
-       FROM animals a
-       JOIN animal_slots als ON als.animal_id = a.id
-       WHERE als.user_id = ? AND als.area_type = 'chicken_coop'
-         AND a.growth_stage = 'adult' AND a.feed_status = 'hungry'`,
-      [userId]
-    );
-
-    if (!newRows.rows || newRows.rows.length === 0) {
-      return res.status(400).json({ success: false, message: '沒有需要餵食的雞' });
-    }
-
-    // 更新所有 hungry 成雞
-    for (const row of newRows.rows as any[]) {
+    // 扣除所需飼料（一次扣 slots.length 份）
+    const feedAfter = invItem.amount - slots.length;
+    console.log('[FEED-ALL DEDUCT]', { feedBefore, feedAfter, deductAmount: slots.length, invId: invItem.id });
+    if (invItem.amount === slots.length) {
+      await db.execute(`DELETE FROM inventories WHERE id = ?`, [invItem.id]);
+    } else {
       await db.execute(
-        `UPDATE animals SET feed_status = 'producing', last_fed_at = ?, updated_at = ? WHERE id = ?`,
-        [now, now, row.id]
+        `UPDATE inventories SET amount = amount - ? WHERE id = ?`,
+        [slots.length, invItem.id]
       );
     }
 
-    // 扣飼料
-    if (inv.amount === 1) {
-      await db.execute(`DELETE FROM inventories WHERE id = ?`, [inv.id]);
-    } else {
-      await db.execute(`UPDATE inventories SET amount = amount - 1 WHERE id = ?`, [inv.id]);
+    // 對每個 READY_TO_FEED 槽位更新為 PRODUCING
+    for (const slot of slots) {
+      await db.execute(
+        `UPDATE chicken_slots SET state = 'PRODUCING', feed_applied_at = ?, updated_at = ? WHERE id = ?`,
+        [Date.now(), Date.now(), slot.id]
+      );
     }
 
-    const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-    const fedCount = newRows.rows.length;
-    return res.json({
-      success: true,
-      message: `一次餵完 ${fedCount} 隻成雞，消耗 1 個普通飼料`,
-      user: { gold: goldRows.rows[0]?.gold ?? 0 },
-      fedCount,
-      usingNew: true,
-    });
+    return res.json({ success: true, message: `餵食成功！扣了 ${slots.length} 包普通飼料`, feedDeducted: slots.length });
   } catch (error) {
     console.error('[Chicken Coop] feed-all error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/collect — 收一格雞蛋
-// ============================================================
+// POST /api/animals/chicken-coop/collect — collect egg and reset to READY_TO_FEED
 router.post('/chicken-coop/collect', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
@@ -554,130 +464,118 @@ router.post('/chicken-coop/collect', async (req: AuthRequest, res: Response) => 
       return res.status(400).json({ success: false, message: '缺少 slotIndex' });
     }
 
-    // 確認可收（優先新表）
-    const animalRows = await db.execute(
-      `SELECT a.id
-       FROM animals a
-       JOIN animal_slots als ON als.animal_id = a.id
-       WHERE als.user_id = ? AND als.area_type = 'chicken_coop' AND als.slot_index = ?`,
-      [userId, slotIndex]
+    // Check slot state
+    const slotRows = await db.execute(
+      `SELECT id, state FROM chicken_slots WHERE user_id = ? AND slot_index = ?`, [userId, slotIndex]
     );
-    let usingNew = !!(animalRows.rows && animalRows.rows.length > 0);
-    const now = Math.floor(Date.now() / 1000);
-
-    if (usingNew) {
-      const animal = animalRows.rows[0];
-      await db.execute(
-        `UPDATE animals SET feed_status = 'hungry', production_ready_at = NULL, updated_at = ? WHERE id = ?`,
-        [now, animal.id]
-      );
+    const slot = slotRows.rows[0];
+    if (!slot) {
+      return res.status(404).json({ success: false, message: '槽位不存在' });
+    }
+    if (slot.state !== 'READY_TO_COLLECT') {
+      return res.status(400).json({ success: false, message: '這隻雞還沒有生出蛋' });
     }
 
-    // 同步舊表
-    const slotIdRows = await db.execute(
-      `SELECT id FROM chicken_slots WHERE user_id = ? AND slot_index = ? AND state = 'READY_TO_COLLECT'`,
-      [userId, slotIndex]
-    );
-    if (slotIdRows.rows && slotIdRows.rows.length > 0) {
-      await db.execute(
-        `UPDATE chicken_slots SET state = 'READY_TO_FEED', produced_at = NULL, updated_at = ? WHERE id = ?`,
-        [now, slotIdRows.rows[0].id]
-      );
-    }
-
-    // 雞蛋進背包（livestock type — 與 sell-livestock 一致）
-    const eggRows = await db.execute(
+    // Add egg to inventory (livestock type, item_id = 9)
+    const EGG_ITEM_ID = 9;
+    const eggInvRows = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
-      [userId, EGG_CROP_ID]
+      [userId, EGG_ITEM_ID]
     );
-    if (eggRows.rows && eggRows.rows.length > 0) {
-      await db.execute(
-        `UPDATE inventories SET amount = amount + 1 WHERE id = ?`,
-        [eggRows.rows[0].id]
-      );
+    const existingEgg = eggInvRows.rows[0];
+    if (existingEgg) {
+      await db.execute(`UPDATE inventories SET amount = amount + 1 WHERE id = ?`, [existingEgg.id]);
     } else {
       await db.execute(
         `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'livestock', ?, 1)`,
-        [userId, EGG_CROP_ID]
+        [userId, EGG_ITEM_ID]
       );
     }
 
-    const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-    console.log(`[CHICKEN COLLECT] userId=${userId} slot=${slotIndex} usingNew=${usingNew}`);
+    // Reset slot to READY_TO_FEED
+    await db.execute(
+      `UPDATE chicken_slots SET state = 'READY_TO_FEED', produced_at = NULL, updated_at = ? WHERE id = ?`,
+      [Date.now(), slot.id]
+    );
 
-    return res.json({
-      success: true,
-      message: '領取雞蛋成功！+1 雞蛋',
-      user: { gold: goldRows.rows[0]?.gold ?? 0 },
-      usingNew,
-    });
+    return res.json({ success: true, message: '收取了 1 個雞蛋！', eggAdded: 1 });
   } catch (error) {
     console.error('[Chicken Coop] collect error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
 
-// ============================================================
-// POST /api/animals/chicken-coop/collect-all
-// ============================================================
+// POST /api/animals/chicken-coop/collect-all — 一次收集所有可收雞蛋
 router.post('/chicken-coop/collect-all', async (req: AuthRequest, res: Response) => {
   try {
+    console.log('[COLLECT-ALL ENTRY]', { userId: req.userId, body: req.body });
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
-    const now = Math.floor(Date.now() / 1000);
+    const { eggCount } = req.body;
+    if (typeof eggCount !== 'number' || eggCount <= 0) {
+      return res.status(400).json({ success: false, message: '沒有雞蛋可收取', debug: { eggCount, reason: 'eggCount not positive or not number' } });
+    }
 
-    // ── 只從新表找 producing（等待收蛋）的雞 ──────────────
-    const newRows = await db.execute(
-      `SELECT a.id, als.slot_index as slotIndex
-       FROM animals a
-       JOIN animal_slots als ON als.animal_id = a.id
-       WHERE als.user_id = ? AND als.area_type = 'chicken_coop'
-         AND a.feed_status = 'producing'`,
+    // 確保雞舍資料存在
+    await ensureChickenData(userId);
+
+    // 查出所有槽位狀態（debug 用）
+    const allSlotsResult = await db.execute(
+      `SELECT id, slot_index, state FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`,
+      [userId]
+    );
+    console.log('[COLLECT-ALL ALL SLOTS]', { userId, slots: allSlotsResult.rows });
+
+    // 找出所有 READY_TO_COLLECT 的槽位
+    const slotRows = await db.execute(
+      `SELECT id, slot_index, state, feed_applied_at, produced_at FROM chicken_slots WHERE user_id = ? AND state = 'READY_TO_COLLECT'`,
       [userId]
     );
 
-    if (!newRows.rows || newRows.rows.length === 0) {
-      return res.status(400).json({ success: false, message: '還沒有雞蛋可收！' });
+    if (slotRows.rows.length === 0) {
+      return res.status(400).json({ success: false, message: '沒有雞蛋可收取', debug: { userId, eggCount, reason: 'no READY_TO_COLLECT slots found' } });
     }
 
-    const count = newRows.rows.length;
+    const slots = slotRows.rows as { id: number; slot_index: number; state: string; feed_applied_at: number; produced_at: number }[];
 
-    // 更新所有 producing → hungry
-    for (const row of newRows.rows as any[]) {
-      await db.execute(
-        `UPDATE animals SET feed_status = 'hungry', production_ready_at = NULL, updated_at = ? WHERE id = ?`,
-        [now, row.id]
-      );
-    }
+    // 檢查雞蛋庫存（用於 log）
+    const EGG_ITEM_ID = 9;
+    const eggInvRows = await db.execute(
+      `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
+      [userId, EGG_ITEM_ID]
+    );
+    const eggBefore = (eggInvRows.rows[0] as any)?.amount ?? 0;
+    console.log('[COLLECT-ALL DEBUG]', {
+      userId,
+      eggCount,
+      slotsFound: slots.length,
+      slots: slots.map(s => ({ id: s.id, state: s.state, produced_at: s.produced_at })),
+      eggBefore,
+    });
 
-    // 全部雞蛋進背包（livestock type — 與 sell-livestock 一致）
-    for (let i = 0; i < count; i++) {
-      const eggRows = await db.execute(
+    // 對每個 READY_TO_COLLECT 槽位：加雞蛋進庫存、重置槽位
+    for (const slot of slots) {
+      const eggInvRows2 = await db.execute(
         `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
-        [userId, EGG_CROP_ID]
+        [userId, EGG_ITEM_ID]
       );
-      if (eggRows.rows && eggRows.rows.length > 0) {
-        await db.execute(
-          `UPDATE inventories SET amount = amount + 1 WHERE id = ?`,
-          [eggRows.rows[0].id]
-        );
+      const existingEgg = eggInvRows2.rows[0];
+      if (existingEgg) {
+        await db.execute(`UPDATE inventories SET amount = amount + 1 WHERE id = ?`, [existingEgg.id]);
       } else {
         await db.execute(
           `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'livestock', ?, 1)`,
-          [userId, EGG_CROP_ID]
+          [userId, EGG_ITEM_ID]
         );
       }
+      await db.execute(
+        `UPDATE chicken_slots SET state = 'READY_TO_FEED', produced_at = NULL, updated_at = ? WHERE id = ?`,
+        [Date.now(), slot.id]
+      );
     }
 
-    const goldRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-    return res.json({
-      success: true,
-      message: `一次領取 ${count} 個雞蛋！`,
-      user: { gold: goldRows.rows[0]?.gold ?? 0 },
-      collectedCount: count,
-      usingNew: true,
-    });
+    return res.json({ success: true, message: `收取了 ${eggCount} 個雞蛋！`, eggsAdded: eggCount });
   } catch (error) {
     console.error('[Chicken Coop] collect-all error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });

@@ -11,14 +11,6 @@ const LIVESTOCK_ITEMS = [
   { id: 'feed_normal', nameZhTw: '普通飼料', buyPrice: 10, requiredLevel: 1, sprite: 'feed_normal.png', itemType: 'consumable', description: '雞的飼料，用於餵養小雞與成雞' },
 ];
 
-// 加工廠商品定義
-const WORKSHOP_ITEMS = [
-  { id: 'food_workshop', nameZhTw: '食品工坊', buyPrice: 2000, requiredLevel: 10, sprite: '食品工坊.png', itemType: 'building', description: '可加工小麥等作物，生產加工品' },
-];
-
-// 全部畜牧+加工廠商品（用於 buy-livestock API 查詢）
-const ALL_LIVESTOCK_AND_WORKSHOP = [...LIVESTOCK_ITEMS, ...WORKSHOP_ITEMS];
-
 // 取得商店作物清單
 router.get('/items', async (req: AuthRequest, res: Response) => {
   try {
@@ -79,8 +71,7 @@ router.get('/items', async (req: AuthRequest, res: Response) => {
         effectValue: item.effectValue,
         requiredLevel: item.requiredLevel
       })),
-      livestock: livestockItems,
-      workshops: WORKSHOP_ITEMS
+      livestock: livestockItems
     });
   } catch (error) {
     console.error('取得商店物品錯誤:', error);
@@ -206,6 +197,7 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
     }
 
     const { itemId, amount = 1 } = req.body;
+    console.log('[BUY-ITEM SERVER DEBUG]', { itemId, amount, body: req.body });
 
     if (!itemId) {
       return res.status(400).json({ success: false, message: '請選擇要購買的道具' });
@@ -217,6 +209,22 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
       [itemId]
     );
     const item = itemResult.rows?.[0];
+    console.log('[BUY-ITEM SERVER items TABLE]', { itemId, item });
+
+    // 普通飼料（itemId=2）：使用 LIVESTOCK_ITEMS 的靜態價格，不走 items table
+    const FEED_ITEM_ID = 2;
+    const LIVESTOCK_ITEM_PRICE: Record<number, { price: number; level: number }> = {
+      2: { price: 10, level: 1 }, // 普通飼料
+    };
+    let buyPrice = item?.buyPrice;
+    let requiredLevel = item?.requiredLevel ?? 1;
+    let itemName = item?.nameZhTw ?? '未知物品';
+    if (Number(itemId) === FEED_ITEM_ID && LIVESTOCK_ITEM_PRICE[FEED_ITEM_ID]) {
+      buyPrice = LIVESTOCK_ITEM_PRICE[FEED_ITEM_ID].price;
+      requiredLevel = LIVESTOCK_ITEM_PRICE[FEED_ITEM_ID].level;
+      itemName = '普通飼料';
+    }
+    console.log('[BUY-ITEM PRICE OVERRIDE]', { itemId, buyPrice, requiredLevel, itemName });
     if (!item) {
       return res.status(404).json({ success: false, message: '道具不存在' });
     }
@@ -231,14 +239,14 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: '用戶不存在' });
     }
 
-    if (user.level < item.requiredLevel) {
+    if (user.level < requiredLevel) {
       return res.status(400).json({
         success: false,
-        message: `需要等級 ${item.requiredLevel} 才能購買${item.nameZhTw}`
+        message: `需要等級 ${requiredLevel} 才能購買${itemName}`
       });
     }
 
-    const totalCost = item.buyPrice * amount;
+    const totalCost = buyPrice * amount;
     if (user.gold < totalCost) {
       return res.status(400).json({
         success: false,
@@ -258,6 +266,12 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
       [userId, itemId]
     );
     const existingItem = existingResult.rows?.[0];
+    const beforeAmount = existingItem?.amount ?? 0;
+    console.log('[BUY-ITEM INVENTORY UPSERT]', {
+      userId, itemId, itemType: 'item',
+      before_quantity: beforeAmount,
+      totalCost, gold_before: user.gold, gold_after: user.gold - totalCost,
+    });
 
     if (existingItem) {
       await db.execute(
@@ -271,6 +285,15 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
       );
     }
 
+    // 取得更新後的庫存
+    const afterResult = await db.execute(
+      `SELECT id, user_id as userId, item_type as itemType, item_id as itemId, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
+      [userId, itemId]
+    );
+    const updatedInventoryRow = afterResult.rows?.[0] ?? null;
+    const afterAmount = updatedInventoryRow?.amount ?? beforeAmount + amount;
+    console.log('[BUY-ITEM AFTER]', { beforeAmount, afterAmount, updatedInventoryRow });
+
     // 取得更新後的金幣
     const updatedResult = await db.execute(
       `SELECT gold FROM users WHERE id = ?`,
@@ -280,16 +303,19 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
 
     return res.json({
       success: true,
-      message: `購買成功！獲得了 ${amount} 個${item.nameZhTw}`,
+      message: `購買成功！獲得了 ${amount} 個${itemName}`,
       purchase: {
         itemId,
-        itemName: item.nameZhTw,
+        itemName,
         amount,
         totalCost
       },
       user: {
         gold: updatedGold
-      }
+      },
+      beforeAmount,
+      afterAmount,
+      updatedInventoryRow
     });
   } catch (error) {
     console.error('購買道具錯誤:', error);
@@ -316,7 +342,7 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '請選擇要購買的商品' });
     }
 
-    const item = ALL_LIVESTOCK_AND_WORKSHOP.find(i => i.id === livestockKey);
+    const item = LIVESTOCK_ITEMS.find(i => i.id === livestockKey);
     if (!item) {
       console.log(`[BUY LIVESTOCK] FAIL: item not found for livestockKey=${livestockKey}`);
       return res.status(404).json({ success: false, message: `商品不存在：${livestockKey}` });
@@ -353,69 +379,36 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
 
     // ── 雞舍：扣除金幣，進入放置模式 ──
     if (item.itemType === 'building') {
-      // 雞舍：檢查 chicken_buildings 記錄
-      if (livestockKey === 'chicken_coop') {
-        const coopRows = await db.execute(
-          `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`,
-          [userId]
-        );
-        const existingCoop = coopRows.rows?.[0];
-        if (existingCoop && (existingCoop.tileX > 0 || existingCoop.tileY > 0)) {
-          return res.status(400).json({ success: false, message: '雞舍已經放置過了' });
-        }
-        // 預扣金幣
-        await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
-        // 確保 chicken_buildings 記錄存在
-        await db.execute(
-          `INSERT INTO chicken_buildings (user_id, tile_x, tile_y, unlocked_at) VALUES (?, 0, 0, ?)
-           ON CONFLICT(user_id) DO UPDATE SET tile_x = 0, tile_y = 0, updated_at = ?`,
-          [userId, Date.now(), Date.now()]
-        );
-        const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-        const updatedGold = updatedResult.rows?.[0]?.gold || 0;
-        return res.json({
-          success: true,
-          action: 'PLACE_BUILDING',
-          buildingType: 'chicken_coop',
-          message: `購買成功！點擊農場放置雞舍`,
-          purchase: { itemKey: livestockKey, itemName: item.nameZhTw, amount, totalCost },
-          user: { gold: updatedGold }
-        });
+      // 檢查是否已經有雞舍記錄
+      const coopRows = await db.execute(
+        `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`,
+        [userId]
+      );
+      const existingCoop = coopRows.rows?.[0];
+      if (existingCoop && (existingCoop.tileX > 0 || existingCoop.tileY > 0)) {
+        return res.status(400).json({ success: false, message: '雞舍已經放置過了' });
       }
 
-      // 食品工坊：寫入 processing_workshops
-      if (livestockKey === 'food_workshop') {
-        // 檢查是否已有食品工坊記錄
-        const existingWs = await db.execute(
-          `SELECT id FROM processing_workshops WHERE user_id = ? AND workshop_type = 'P001'`,
-          [userId]
-        );
-        if (existingWs.rows && existingWs.rows.length > 0) {
-          return res.status(400).json({ success: false, message: '已有食品工坊，無法重複購買' });
-        }
-        // 預扣金幣
-        await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
-        // 建立加工廠記錄（未放置）
-        await db.execute(
-          `INSERT INTO processing_workshops (user_id, workshop_type, workshop_name, level, is_placed)
-           VALUES (?, 'P001', '食品工坊', 1, 0)`,
-          [userId]
-        );
-        const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
-        const updatedGold = updatedResult.rows?.[0]?.gold || 0;
-        return res.json({
-          success: true,
-          action: 'PLACE_BUILDING',
-          buildingType: 'food_workshop',
-          workshopType: 'P001',
-          message: `購買成功！點擊農場放置食品工坊`,
-          purchase: { itemKey: livestockKey, itemName: item.nameZhTw, amount, totalCost },
-          user: { gold: updatedGold }
-        });
-      }
+      // 預扣金幣
+      await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
 
-      // 其他建築（未知）
-      return res.status(400).json({ success: false, message: `不支援的建築：${livestockKey}` });
+      // 確保 chicken_buildings 記錄存在
+      await db.execute(
+        `INSERT INTO chicken_buildings (user_id, tile_x, tile_y, unlocked_at) VALUES (?, 0, 0, ?)
+         ON CONFLICT(user_id) DO UPDATE SET tile_x = 0, tile_y = 0, updated_at = ?`,
+        [userId, Date.now(), Date.now()]
+      );
+
+      const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+      const updatedGold = updatedResult.rows?.[0]?.gold || 0;
+
+      return res.json({
+        success: true,
+        action: 'PLACE_BUILDING',
+        message: `購買成功！點擊農場放置雞舍`,
+        purchase: { itemKey: livestockKey, itemName: item.nameZhTw, amount, totalCost },
+        user: { gold: updatedGold }
+      });
     }
 
     // ── 小雞：呼叫 animals API 購買 ──
@@ -471,7 +464,7 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
       await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
 
       const existingResult = await db.execute(
-        `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
+        `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
         [userId, FEED_ITEM_ID]
       );
       const existingItem = existingResult.rows?.[0];
@@ -479,7 +472,7 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
         await db.execute(`UPDATE inventories SET amount = amount + ? WHERE id = ?`, [amount, existingItem.id]);
       } else {
         await db.execute(
-          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'item', ?, ?)`,
+          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'livestock', ?, ?)`,
           [userId, FEED_ITEM_ID, amount]
         );
       }
@@ -511,13 +504,70 @@ router.post('/sell', async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: '未授權' });
     }
 
-    const { cropId, amount = 1 } = req.body;
+    const { cropId, itemId, itemType, amount = 1 } = req.body;
+    console.log('[SELL API DEBUG]', { cropId, itemId, itemType, amount, EGG_ITEM_ID: 9 });
 
+    // ── 畜牧產品（雞蛋）出售 ──
+    // 雞蛋在 inventories 表中是 item_id=1（collect-all 寫入的）
+    if (itemType === 'livestock' && itemId) {
+      const EGG_ITEM_ID = 1;
+      const EGG_SELL_PRICE = 30;
+
+      console.log('[SELL LIVESTOCK DEBUG]', {
+        received_itemId: itemId,
+        received_itemId_type: typeof itemId,
+        Number_itemId: Number(itemId),
+        EGG_ITEM_ID,
+        will_match: Number(itemId) === EGG_ITEM_ID,
+        inventory_check_query: `SELECT id, amount FROM inventories WHERE user_id=${userId} AND item_type='livestock' AND item_id=${itemId}`,
+      });
+
+      if (Number(itemId) !== EGG_ITEM_ID) {
+        return res.status(400).json({ success: false, message: '不支援出售此畜牧產品（僅支援雞蛋）' });
+      }
+
+      const invResult = await db.execute(
+        `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
+        [userId, itemId]
+      );
+      const invItem = invResult.rows?.[0];
+      console.log('[SELL LIVESTOCK INVENTORY CHECK]', {
+        userId,
+        itemId,
+        invResult_rows: invResult.rows,
+        invItem,
+        amount,
+        will_pass_check: invItem && invItem.amount >= amount,
+      });
+      if (!invItem || invItem.amount < amount) {
+        return res.status(400).json({ success: false, message: '背包中沒有足夠的雞蛋' });
+      }
+
+      const totalPrice = EGG_SELL_PRICE * amount;
+      await db.execute(`UPDATE users SET gold = gold + ? WHERE id = ?`, [totalPrice, userId]);
+
+      if (invItem.amount === amount) {
+        await db.execute(`DELETE FROM inventories WHERE id = ?`, [invItem.id]);
+      } else {
+        await db.execute(`UPDATE inventories SET amount = amount - ? WHERE id = ?`, [amount, invItem.id]);
+      }
+
+      const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+      const updatedGold = updatedResult.rows?.[0]?.gold || 0;
+
+      return res.json({
+        success: true,
+        message: `賣出成功！獲得了 ${totalPrice} 金幣`,
+        sale: { itemId, itemType: 'livestock', itemName: '雞蛋', amount, totalPrice },
+        user: { gold: updatedGold },
+      });
+    }
+
+    // ── 作物出售 ──
     if (!cropId) {
       return res.status(400).json({ success: false, message: '請選擇要賣出的作物' });
     }
 
-    // 檢查背包中的作物數量
     const inventoryResult = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'crop' AND item_id = ?`,
       [userId, cropId]
@@ -525,13 +575,9 @@ router.post('/sell', async (req: AuthRequest, res: Response) => {
     const inventoryItem = inventoryResult.rows?.[0];
 
     if (!inventoryItem || inventoryItem.amount < amount) {
-      return res.status(400).json({
-        success: false,
-        message: '背包中沒有足夠的作物'
-      });
+      return res.status(400).json({ success: false, message: '背包中沒有足夠的作物' });
     }
 
-    // 取得作物資料
     const cropResult = await db.execute(
       `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice FROM crops WHERE id = ?`,
       [cropId]
@@ -542,45 +588,22 @@ router.post('/sell', async (req: AuthRequest, res: Response) => {
     }
 
     const totalPrice = crop.sellPrice * amount;
+    await db.execute(`UPDATE users SET gold = gold + ? WHERE id = ?`, [totalPrice, userId]);
 
-    // 增加金幣
-    await db.execute(
-      `UPDATE users SET gold = gold + ? WHERE id = ?`,
-      [totalPrice, userId]
-    );
-
-    // 減少背包中的作物
     if (inventoryItem.amount === amount) {
-      await db.execute(
-        `DELETE FROM inventories WHERE id = ?`,
-        [inventoryItem.id]
-      );
+      await db.execute(`DELETE FROM inventories WHERE id = ?`, [inventoryItem.id]);
     } else {
-      await db.execute(
-        `UPDATE inventories SET amount = amount - ? WHERE id = ?`,
-        [amount, inventoryItem.id]
-      );
+      await db.execute(`UPDATE inventories SET amount = amount - ? WHERE id = ?`, [amount, inventoryItem.id]);
     }
 
-    // 取得更新後的金幣
-    const updatedResult = await db.execute(
-      `SELECT gold FROM users WHERE id = ?`,
-      [userId]
-    );
+    const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
     const updatedGold = updatedResult.rows?.[0]?.gold || 0;
 
     return res.json({
       success: true,
       message: `賣出成功！獲得了 ${totalPrice} 金幣`,
-      sale: {
-        cropId,
-        cropName: crop.nameZhTw,
-        amount,
-        totalPrice
-      },
-      user: {
-        gold: updatedGold
-      }
+      sale: { cropId, cropName: crop.nameZhTw, amount, totalPrice },
+      user: { gold: updatedGold },
     });
   } catch (error) {
     console.error('賣出錯誤:', error);
@@ -599,7 +622,7 @@ router.post('/sell-livestock', async (req: AuthRequest, res: Response) => {
 
     // 畜牧物品靜態資料
     const livestockItems: Record<number, { nameZhTw: string; sellPrice: number }> = {
-      9: { nameZhTw: '雞蛋', sellPrice: 30 },
+      1: { nameZhTw: '雞蛋', sellPrice: 5 },
     };
     const info = livestockItems[itemId];
     if (!info) return res.status(404).json({ success: false, message: '畜牧物品不存在' });

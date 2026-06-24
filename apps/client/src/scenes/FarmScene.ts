@@ -168,7 +168,6 @@ export default class FarmScene extends Phaser.Scene {
   private isFarmActionMenuOpen: boolean = false;
   private seedPopup: Phaser.GameObjects.Container | null = null;
   private seedPopupOverlay: Phaser.GameObjects.Graphics | null = null;
-  private cropTooltip: Phaser.GameObjects.Container | null = null;
 
   private _frameCount: number = 0;
   private FARM_SIZE = 180;
@@ -182,12 +181,7 @@ export default class FarmScene extends Phaser.Scene {
   private chickenCoopTileY = 0;
   private chickenCoopSprite: Phaser.GameObjects.Sprite | null = null;
 
-  // ── 食品工坊狀態 ──
-  private foodWorkshopPlaced = false;
-  private foodWorkshopTileX = 0;
-  private foodWorkshopTileY = 0;
-  private foodWorkshopSprite: Phaser.GameObjects.Sprite | null = null;
-
+  // ── 雞舍放置模式 ──
   // ── 農地位置(instance variable 供 placement system 使用)──
   private farmStartX = 0;
   private farmStartY = 0;
@@ -201,8 +195,6 @@ export default class FarmScene extends Phaser.Scene {
   private coopPlacementTileY = 0;
   private coopChickenStatus: any = null;
   private coopChickenPollTimer: Phaser.Time.TimerEvent | null = null;
-  // ── 當前正在放置的建築類型 ──
-  private currentBuildingType: string = '';
   private _startCoopPlacement = () => {};
   private _coopPlacementListenerRegistered = false;
   private farmlandObjects: Phaser.GameObjects.Container[] = [];
@@ -298,7 +290,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.load.image('chicken_coop', '/assets/buildings/chicken_coop.png');
     this.load.image('chick_baby', '/assets/animals/chick_baby.png');
     this.load.image('chicken_adult', '/assets/animals/chicken_adult.png');
-    this.load.image('food_workshop', '/assets/buildings/食品工坊.png');
   }
 
   create() {
@@ -380,9 +371,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
 
       farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
-      farmContainer.on('pointerover', () => this.showCropTooltip(i));
-      farmContainer.on('pointermove', (pointer: Phaser.Input.Pointer) => this.moveCropTooltip(pointer));
-      farmContainer.on('pointerout', () => this.hideCropTooltip());
 
       this.tiles.set(`${i}`, farmContainer);
       this.farmlandObjects.push(farmContainer);
@@ -405,11 +393,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       };
       window.addEventListener('startCoopPlacement', this._startCoopPlacement);
     }
-
-    this.events.on('extraFarmsUnlocked', () => {
-      console.log('[extraFarmsUnlocked] 等級 8 解鎖額外農地');
-      this.createExtraFarms();
-    });
 
     this.input.keyboard?.on('keydown-ESC', () => {
       this.clearAllPopups();
@@ -463,12 +446,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     window.addEventListener('inventory-updated', () => {
       console.log('[EVENT] inventory-updated received, refetching backpack');
       backpackSystem.fetchAll();
-    });
-
-    // ── 監聽食品工坊放置事件 ──
-    window.addEventListener('startFoodWorkshopPlacement', () => {
-      console.log('[EVENT] startFoodWorkshopPlacement received');
-      this.startFoodWorkshopPlacement();
     });
   }
 
@@ -727,9 +704,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // 作物固定置於農地中央再套用 visual offset
     const cropImg = this.add.image(pos.x, pos.y, spriteKey);
-    // 營養不良(dry)狀態圖片寬高各縮小 8px
-    const isDry = stage === 'dry';
-    const scale = (stage === 'seedling') ? 0.8 : (isDry ? 0.86 : 1.0);
+    const scale = (stage === 'seedling') ? 0.8 : 1.0;
     cropImg.setDisplaySize(100 * scale, 100 * scale);
     cropImg.setOrigin(0.5, 1);
     container.add(cropImg);
@@ -770,14 +745,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (state.plantedAt && state.finishAt && now >= state.finishAt) return 'mature';
 
     // 成長進度判斷
-    const cropKey = state.cropId ? (CROP_ID_TO_KEY[state.cropId] ?? '') : '';
     if (!state.plantedAt || !state.finishAt) return 'seedling';
     const total = state.finishAt - state.plantedAt;
     const elapsed = now - state.plantedAt;
     const ratio = Math.min(1, Math.max(0, elapsed / total));
     if (ratio < 0.5) return 'seedling';
-    // 小麥與玉米：跳過 growing 圖，直接維持 seedling 直到成熟
-    if (cropKey === 'wheat' || cropKey === 'corn') return 'seedling';
     return 'growing';
   }
 
@@ -797,6 +769,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     const state = this.farmState.get(index);
     if (!state) return;
+
 
     // 清除舊選單
     this.clearAllPopups();
@@ -2152,7 +2125,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     }
 
     console.log('[ENTER BUILDING MODE]', buildingType);
-    this.currentBuildingType = buildingType;
     this.farmInputEnabled = true;
 
     // 先 clearAllPopups(coopPlacementMode 此時還是 false,不會觸發 cancelCoopPlacement)
@@ -2694,74 +2666,115 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ── 餵食按鈕 handler ──
-  private handleFeedChickenCoop(panelEl: HTMLDivElement) {
-    (async () => {
-      const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-      if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-      const coop = JSON.parse(coopRaw);
-      const animalCount = (coop.animals ?? []).length;
-      if (coop.feedingStatus === 'fed') { this.events.emit('game-toast', '已餵食，請等待倒數完成'); return; }
-      if (animalCount <= 0) { this.events.emit('game-toast', '雞舍裡沒有雞'); return; }
+  private async handleFeedChickenCoop(panelEl: HTMLDivElement) {
+    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
+    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
+    const coop = JSON.parse(coopRaw);
+    const animalCount = (coop.animals ?? []).length;
+    const requiredFeed = animalCount;
+    if (coop.feedingStatus === 'fed') { this.events.emit('game-toast', '已餵食,請等待倒數完成'); return; }
+    if (animalCount <= 0) { this.events.emit('game-toast', '雞舍裡沒有雞'); return; }
 
-      try {
-        const res = await authFetch('/api/animals/chicken-coop/feed-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.events.emit('game-toast', data.message || '餵食成功');
-          // 更新本地雞舍狀態（餵食後進入倒數）
-          coop.feedingStatus = 'fed';
-          coop.lastFedAt = Date.now();
-          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-          // 刷新背包
-          window.dispatchEvent(new Event('inventory-updated'));
-          backpackSystem.fetchAll();
-          this.refreshCoopPanelStatus(panelEl);
-        } else {
-          this.events.emit('game-toast', data.message || '餵食失敗：普通飼料不足');
-        }
-      } catch {
-        this.events.emit('game-toast', '餵食失敗，請稍後再試');
+    const LIVESTOCK_KEY = 'tlo_farm_inventory_livestock';
+    const stored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
+    const state = backpackSystem.getState();
+    const itemsState = state.items;
+
+    // （fields already validated via isBasicFeed check above）
+
+    const getItemDisplayName = (item: any) =>
+      String(item.nameZhTw ?? item.itemName ?? item.displayName ?? item.name ?? item.title ?? '');
+    const getItemKey = (item: any) =>
+      String(item.itemId ?? item.key ?? item.id ?? '');
+    const getItemQuantity = (item: any) =>
+      Number(item.quantity ?? item.count ?? item.amount ?? 0);
+    const isBasicFeed = (item: any) => {
+      const name = getItemDisplayName(item);
+      const key = getItemKey(item);
+      return key === 'feed_basic' || key === 'basic_feed' || key === 'normal_feed' ||
+        key === '普通飼料' || name === '普通飼料' || name.includes('普通飼料');
+    };
+
+    const feedFromLivestock = stored.find(isBasicFeed);
+    const feedFromItems = itemsState.find(isBasicFeed);
+    const feedItem = feedFromLivestock ?? feedFromItems;
+
+    if (!feedItem) {
+      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 0 包`);
+      return;
+    }
+
+    const feedBefore = getItemQuantity(feedItem);
+    if (feedBefore < requiredFeed) {
+      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 ${feedBefore} 包`);
+      return;
+    }
+
+    const feedAfter = feedBefore - requiredFeed;
+    if (feedFromLivestock) {
+      backpackSystem.updateLivestockItem(Number(feedFromLivestock.itemId), -requiredFeed);
+    } else {
+      backpackSystem.deductItem('item', 2);
+      const livestockStored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
+      const lIdx = livestockStored.findIndex((item: any) => isBasicFeed(item));
+      if (lIdx !== -1) livestockStored[lIdx].amount = feedAfter;
+      else livestockStored.push({ id: 0, itemType: 'livestock', itemId: 2, amount: feedAfter, name: '普通飼料', sprite: 'feed_normal.png', sellPrice: 0, growTimeSec: 0 });
+      localStorage.setItem(LIVESTOCK_KEY, JSON.stringify(livestockStored));
+    }
+
+
+    coop.feedingStatus = 'fed';
+    coop.lastFedAt = Date.now();
+    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
+    window.dispatchEvent(new Event('inventory-updated'));
+    this.refreshCoopPanelStatus(panelEl);
+
+    try {
+      const res = await authFetch('/api/animals/chicken-coop/feed-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const result = await res.json();
+      if (!result.success) {
+        console.warn('[FEED-ALL API FAIL]', result);
       }
-    })();
+    } catch (err) {
+      console.warn('[FEED-ALL API ERROR]', err);
+    }
   }
 
   // ── 收雞蛋按鈕 handler ──
-  private handleCollectEggs(panelEl: HTMLDivElement) {
-    (async () => {
-      const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-      if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-      const coop = JSON.parse(coopRaw);
-      const eggs = Number(coop.eggCount || 0);
-      if (eggs <= 0) { this.events.emit('game-toast', '目前沒有可收雞蛋'); return; }
+  private async handleCollectEggs(panelEl: HTMLDivElement) {
+    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
+    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
+    const coop = JSON.parse(coopRaw);
+    const eggs = Number(coop.eggCount || 0);
+    if (eggs <= 0) { this.events.emit('game-toast', '目前沒有可收雞蛋'); return; }
 
-      try {
-        const res = await authFetch('/api/animals/chicken-coop/collect-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eggCount: eggs }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.events.emit('game-toast', data.message || `收到 ${data.collectedCount ?? eggs} 個雞蛋`);
-          // 清空本地雞舍雞蛋計數（避免重複收）
-          coop.eggCount = 0;
-          coop.feedingStatus = 'none';
-          coop.lastFedAt = null;
-          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-          // 刷新背包
-          window.dispatchEvent(new Event('inventory-updated'));
-          backpackSystem.fetchAll();
-          this.refreshCoopPanelStatus(panelEl);
-        } else {
-          this.events.emit('game-toast', data.message || '領取雞蛋失敗');
-        }
-      } catch {
-        this.events.emit('game-toast', '領取雞蛋失敗，請稍後再試');
+    let apiSuccess = false;
+    try {
+      const res = await authFetch('/api/animals/chicken-coop/collect-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eggCount: eggs }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        apiSuccess = true;
+      } else {
+        console.warn('[COLLECT-ALL API FAIL]', result);
       }
-    })();
+    } catch (err: any) {
+      console.warn('[COLLECT-ALL API ERROR]', err);
+    }
+
+    const before = [...backpackSystem.getState().livestock];
+    backpackSystem.updateLivestockItem(1, eggs);
+
+    coop.eggCount = 0;
+    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
+    window.dispatchEvent(new Event('inventory-updated'));
+    this.refreshCoopPanelStatus(panelEl);
   }
 
   // ── DEV 立即產蛋 handler ──
@@ -3207,244 +3220,47 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.exitBuildingPlacement(reason);
   }
 
-  // ── 確認放置（分流的中心點）──
+  // ── 確認放置雞舍 ──
   private async confirmCoopPlacement(tileX: number, tileY: number) {
-    if (!this.coopPlacementValid) return;
-
-    const type = this.currentBuildingType;
-
-    // ── 雞舍 ──
-    if (type === 'chicken_coop') {
-      try {
-        const res = await authFetch('/api/animals/chicken-coop/place', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tileX, tileY }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          this.chickenCoopPlaced = true;
-          this.chickenCoopTileX = tileX;
-          this.chickenCoopTileY = tileY;
-          this.pendingChickenCoop = false;
-          this.renderChickenCoop();
-          this.syncChickenCoopStatus();
-          this.startChickenPoll();
-          this.events.emit('chickenCoopPlaced');
-          this.cancelCoopPlacement('place_success');
-          console.log('[FarmScene] Chicken coop placed at', tileX, tileY);
-        }
-      } catch (err) {
-        console.error('[FarmScene] Place coop error:', err);
-      }
+    if (!this.coopPlacementValid) {
       return;
     }
 
-    // ── 食品工坊 ──
-    if (type === 'food_workshop') {
-      // 直接本地寫入 localStorage（後端暫不建表）
-      const existing = this.loadWorkshopLocalState();
-      const data = existing || {};
-      data.x = tileX;
-      data.y = tileY;
-      data.level = 1;
-      data.queue1 = null;
-      data.queue2 = null;
-      localStorage.setItem('tlo_farm_food_workshop', JSON.stringify(data));
-
-      this.foodWorkshopPlaced = true;
-      this.foodWorkshopTileX = tileX;
-      this.foodWorkshopTileY = tileY;
-      this.renderFoodWorkshop();
-      this.cancelCoopPlacement('place_success');
-      this.events.emit('foodWorkshopPlaced');
-      console.log('[FarmScene] Food workshop placed at', tileX, tileY);
-      return;
-    }
-  }
-
-  // ── 食品工坊：讀取本地狀態 ──
-  private loadWorkshopLocalState(): Record<string, unknown> | null {
+    // 先停在放置模式,等 API 成功再退出
     try {
-      const raw = localStorage.getItem('tlo_farm_food_workshop');
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  }
-
-  // ── 食品工坊：渲染已放置的工坊 ──
-  private renderFoodWorkshop() {
-    if (!this.foodWorkshopPlaced) return;
-
-    if (this.foodWorkshopSprite) {
-      this.foodWorkshopSprite.destroy();
-      this.foodWorkshopSprite = null;
-    }
-
-    const farmStartX = this.farmStartX;
-    const farmStartY = this.farmStartY;
-    const pixelX = farmStartX + this.foodWorkshopTileX * this.FARM_SIZE + this.FARM_SIZE;
-    const pixelY = farmStartY + this.foodWorkshopTileY * this.FARM_SIZE + this.FARM_SIZE;
-
-    const sprite = this.add.sprite(pixelX, pixelY, 'food_workshop');
-    sprite.setDisplaySize(this.FARM_SIZE * 2, this.FARM_SIZE * 2);
-    sprite.setOrigin(0.5, 0.5);
-    sprite.setDepth(5);
-
-    // 點擊開啟管理介面
-    sprite.setInteractive(new Phaser.Geom.Rectangle(0, 0, this.FARM_SIZE * 2, this.FARM_SIZE * 2), Phaser.Geom.Rectangle.Contains);
-    sprite.on('pointerdown', () => {
-      this.events.emit('openFoodWorkshop');
-    });
-
-    this.foodWorkshopSprite = sprite;
-    console.log('[FarmScene] Food workshop sprite rendered at', pixelX, pixelY);
-  }
-
-  // ── 食品工坊：進入放置模式 ──
-  private startFoodWorkshopPlacement() {
-    this.enterBuildingPlacement('food_workshop');
-  }
-
-  // ============================================================
-  // 農作物 hover tooltip
-  // ============================================================
-  private showCropTooltip(index: number) {
-    const state = this.farmState.get(index);
-    const cropName = state?.cropId
-      ? (getCropDetails(state.cropId)?.nameZhTw ?? '作物')
-      : '空農地';
-
-    this.hideCropTooltip();
-
-    const container = this.add.container(0, 0);
-    container.setDepth(9999);
-
-    // Tooltip 尺寸
-    const paddingX = 14;
-    const paddingY = 8;
-    const lineHeight = 22;
-    const fontSize = 15;
-
-    // 建立文字（先用同樣樣式測量）
-    const measureText = this.add.text(0, 0, cropName, {
-      fontFamily: '"Cubic 11", "俐方體11號", monospace',
-      fontSize: `${fontSize}px`,
-      color: '#3d2010',
-    });
-    const textWidth = measureText.width;
-    const textHeight = measureText.height;
-    measureText.destroy();
-
-    const bw = textWidth + paddingX * 2;
-    const bh = textHeight + paddingY * 2;
-
-    // 奶油色背景 + 深咖啡色框
-    const bg = this.add.graphics();
-    bg.fillStyle(0xfff8dc, 1);      // 奶油色 #fff8dc
-    bg.fillRoundedRect(0, 0, bw, bh, 4);
-    bg.lineStyle(2, 0x5c3d2e, 1);   // 深咖啡色 #5c3d2e
-    bg.strokeRoundedRect(0, 0, bw, bh, 4);
-
-    const label = this.add.text(paddingX, paddingY, cropName, {
-      fontFamily: '"Cubic 11", "俐方體11號", monospace',
-      fontSize: `${fontSize}px`,
-      color: '#3d2010',
-    });
-
-    container.add([bg, label]);
-    container.setPosition(99999, 99999); // 先藏起來，等 pointermove
-    this.cropTooltip = container;
-
-    // 立即跟著目前指標位置
-    const ptr = this.input.activePointer;
-    if (ptr) {
-      this.moveCropTooltip(ptr);
-    }
-  }
-
-  private moveCropTooltip(pointer: Phaser.Input.Pointer) {
-    if (!this.cropTooltip) return;
-    const x = pointer.x + 18;
-    const y = pointer.y - 50;
-    // 簡單超界檢查
-    if (x + 150 > this.scale.width) {
-      this.cropTooltip.setX(pointer.x - 150);
-    } else {
-      this.cropTooltip.setX(x);
-    }
-    if (y < 10) {
-      this.cropTooltip.setY(pointer.y + 20);
-    } else {
-      this.cropTooltip.setY(y);
-    }
-  }
-
-  private hideCropTooltip() {
-    if (this.cropTooltip) {
-      this.cropTooltip.destroy();
-      this.cropTooltip = null;
-    }
-  }
-
-  // ============================================================
-  // Lv8 解鎖額外兩塊農地（plot6, plot7）
-  // ============================================================
-  // 等級 8 解鎖時，按下 LevelUpModal 確認後呼叫此方法建立額外農地
-  private createExtraFarms() {
-    const COLS = 3;
-    for (let i = 6; i <= 7; i++) {
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
-      const px = this.farmStartX + col * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
-      const py = this.farmStartY + row * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
-
-      const farmContainer = this.add.container(px, py);
-      farmContainer.setSize(this.FARM_SIZE, this.FARM_SIZE);
-      farmContainer.setInteractive(
-        new Phaser.Geom.Rectangle(0, 0, this.FARM_SIZE, this.FARM_SIZE),
-        Phaser.Geom.Rectangle.Contains
-      );
-      farmContainer.setData('index', i);
-
-      const soilImg = this.add.image(0, 0, 'tile_soil');
-      soilImg.setDisplaySize(this.FARM_SIZE, this.FARM_SIZE);
-      soilImg.setOrigin(0.5, 0.5);
-      farmContainer.add(soilImg);
-
-      this.farmState.set(i, {
-        x: i % COLS,
-        y: Math.floor(i / COLS),
-        type: 'soil',
-        state: 'empty',
-        cropState: 'empty',
-        soilState: 'dry',
-        cropId: undefined,
-        plantedAt: undefined,
-        finishAt: undefined,
-        wateredAt: undefined,
-        isWatered: false,
-        cropStatus: 'needs_water',
+      const res = await authFetch('/api/animals/chicken-coop/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tileX, tileY }),
       });
-
-      farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
-      farmContainer.on('pointerover', () => this.showCropTooltip(i));
-      farmContainer.on('pointermove', (pointer: Phaser.Input.Pointer) => this.moveCropTooltip(pointer));
-      farmContainer.on('pointerout', () => this.hideCropTooltip());
-
-      this.tiles.set(`${i}`, farmContainer);
-      this.farmlandObjects.push(farmContainer);
+      const data = await res.json();
+      if (data.success) {
+        this.chickenCoopPlaced = true;
+        this.chickenCoopTileX = tileX;
+        this.chickenCoopTileY = tileY;
+        this.pendingChickenCoop = false;
+        this.renderChickenCoop();
+        this.syncChickenCoopStatus();
+        this.startChickenPoll();
+        // 通知商店 UI 更新雞舍狀態
+        this.events.emit('chickenCoopPlaced');
+        // 退出放置模式(清除 preview、DOM listener、debug timer)
+        this.cancelCoopPlacement('place_success');
+        console.log('[FarmScene] Chicken coop placed at', tileX, tileY);
+      } else {
+        console.warn('[FarmScene] Place coop failed:', data.message);
+        // API 失敗:留在放置模式,讓玩家重選位置
+      }
+    } catch (err) {
+      console.error('[FarmScene] Place coop error:', err);
+      // 網路錯誤:留在放置模式
     }
-    this.events.emit('game-toast', '新增農地 plot6、plot7！');
   }
 
   // ============================================================
   // 清除所有彈窗
   // ============================================================
   private clearAllPopups() {
-    this.hideCropTooltip();
     // 0. 取消雞舍放置模式
     if (this.coopPlacementMode) {
       this.cancelCoopPlacement('clearAllPopups');

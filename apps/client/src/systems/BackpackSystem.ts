@@ -193,15 +193,10 @@ class BackpackSystem {
       ]);
       // Merge：localStorage 永遠是事實來源（本地操作的紀錄）
       // API 結果只用來補充 localStorage 沒有的 itemId
-      // 注意：itemId=1 在 items 表是普通肥料，在 crops 表是小麥，不是雞蛋
-      //       若 localStorage 有 itemId=1 的殘留資料，直接忽略（避免假雞蛋顯示）
       const mergedMap = new Map<string, BackpackItem>();
+      // 先放 localStorage（保留本地所有操作）
       const localSaved = this.loadLivestockLocal();
       for (const localItem of localSaved) {
-        if (localItem.itemId === 1) {
-          // itemId=1 不是雞蛋，是小麥/肥料，忽略並清除
-          continue;
-        }
         mergedMap.set(String(localItem.itemId), { ...localItem });
       }
       // 再用 API 結果補充（只加 API 有而 localStorage 沒有的）
@@ -211,37 +206,10 @@ class BackpackSystem {
           mergedMap.set(key, apiItem);
         }
       }
-      // feed (itemId=2) 只出現在畜牧分頁，不出現在道具分頁
-      const itemsWithoutFeed = items.filter((i: BackpackItem) => i.itemId !== 2);
-      // Migration：如果 'items' API 回傳中有 feed (itemId=2)，寫入 livestock localStorage
-      // 只在從未執行過 migration 時才做；且若本地已有 feed 不覆蓋（保留本地已扣的數量）
-      const MIGRATION_KEY = 'tlo_feed_migration_done';
-      const feedInItems = items.find((i: BackpackItem) => i.itemId === 2);
-      const localSaved2 = this.loadLivestockLocal();
-      const localFeedIdx = localSaved2.findIndex((item: any) => item.itemId === 2);
-      const hasLocalFeed = localFeedIdx !== -1;
-
-      if (localStorage.getItem(MIGRATION_KEY) === '1') {
-        // 已做過 migration，不再覆蓋本地資料
-      } else if (feedInItems && feedInItems.amount > 0) {
-        // 從未 migration，且 API 有 feed：寫入本地（若本地已有 feed 不覆蓋）
-        if (hasLocalFeed) {
-        } else {
-          localSaved2.push({ id: 0, itemType: 'livestock', itemId: 2, amount: feedInItems.amount, name: '普通飼料', sprite: 'feed_normal.png', sellPrice: 0, growTimeSec: 0 });
-          localStorage.setItem(BackpackSystem.LIVESTOCK_STORAGE_KEY, JSON.stringify(localSaved2));
-        }
-        localStorage.setItem(MIGRATION_KEY, '1');
-      } else if (feedInItems && feedInItems.amount <= 0 && hasLocalFeed) {
-        // API feed 已扣到 0，但本地還有（或已扣到 0），標記已完成
-        localStorage.setItem(MIGRATION_KEY, '1');
-      }
+      // ✅ 移除 feed 過濾：itemId=2 需要留在 state.items，讓商店顯示正確
+      // feed 同時存在於 state.items（API 來源）和 state.livestock（localStorage migration）
       const mergedLivestock = Array.from(mergedMap.values());
-      // 同步清理後的 livestock 回 localStorage（去除 itemId=1 假雞蛋殘留）
-      this.setState({ seeds, crops, items: itemsWithoutFeed, livestock: mergedLivestock, loading: false });
-      // 立即寫回 localStorage（下次 fetchAll 不會重複出現假雞蛋）
-      try {
-        localStorage.setItem(BackpackSystem.LIVESTOCK_STORAGE_KEY, JSON.stringify(mergedLivestock));
-      } catch (e) { /* ignore */ }
+      this.setState({ seeds, crops, items, livestock: mergedLivestock, loading: false });
     } catch (err: any) {
       this.setState({ loading: false, error: err.message, livestock: this.state.livestock });
     }
@@ -355,14 +323,24 @@ class BackpackSystem {
       }
     }
 
-    // 從 livestock 找
-    const liveItem = this.state.livestock.find(i => i.id === itemId);
+    // 從 livestock 找：itemId 是商品 item_id（如雞蛋 itemId=9），不是 inventory row id
+    const liveItem = this.state.livestock.find(i => i.itemId === itemId || i.item_id === itemId);
     if (liveItem) {
+      console.warn('[SELL EGG REQUEST DEBUG]', {
+        liveItem,
+        itemId_arg: itemId,
+        liveItem_itemId: liveItem.itemId,
+        liveItem_id: liveItem.id,
+        liveItem_name: liveItem.name,
+        liveItem_amount: liveItem.amount,
+        liveItem_itemType: liveItem.itemType,
+      });
       try {
-        const res = await authFetch('/api/shop/sell-livestock', {
+        // ✅ 雞蛋走 /api/shop/sell（通用 API），帶 itemType='livestock'
+        const res = await authFetch('/api/shop/sell', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemId: liveItem.itemId, amount: 1 }),
+          body: JSON.stringify({ itemId: liveItem.itemId, itemType: 'livestock', amount: 1 }),
         });
         const data = await res.json();
         if (data.success) {

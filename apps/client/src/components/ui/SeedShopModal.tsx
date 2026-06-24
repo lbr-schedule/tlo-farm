@@ -54,7 +54,6 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
   const [crops, setCrops] = useState<CropInfo[]>([]);
   const [items, setItems] = useState<ItemInfo[]>([]);
   const [livestock, setLivestock] = useState<LivestockInfo[]>([]);
-  const [workshops, setWorkshops] = useState<LivestockInfo[]>([]); // 加工廠（結尾共用 LivestockInfo 結帳流程）
   const [lockedCrops, setLockedCrops] = useState<CropInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<number | string | null>(null);
@@ -62,8 +61,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
   const [userGoldState, setUserGoldState] = useState(userGold);
   const [seedCounts, setSeedCounts] = useState<Record<number, number>>({});
   const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
-  const [livestockCounts, setLivestockCounts] = useState<Record<number, number>>({});
-  const [activeTab, setActiveTab] = useState<'seeds' | 'items' | 'livestock' | 'workshops'>('seeds');
+  const [feedCount, setFeedCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<'seeds' | 'items' | 'livestock'>('seeds');
   const { authFetch } = useAuth();
 
   // 雞舍狀態
@@ -90,9 +89,9 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
       const iCounts: Record<number, number> = {};
       (state.items ?? []).forEach(i => { iCounts[i.itemId] = i.amount; });
       setItemCounts(iCounts);
-      const lCounts: Record<number, number> = {};
-      (state.livestock ?? []).forEach(l => { lCounts[l.itemId] = l.amount; });
-      setLivestockCounts(lCounts);
+      const feedItem = (state.items ?? []).find(i => i.itemId === 2);
+      console.log('[5173 FEED INVENTORY COUNT AFTER]', { feedItem, feedCountSet: feedItem?.amount ?? 0, allItems: state.items });
+      setFeedCount(feedItem?.amount ?? 0);
     });
     return unsub;
   }, []);
@@ -126,7 +125,6 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
         setLockedCrops(data.locked || []);
         setItems(data.items || []);
         setLivestock(data.livestock || []);
-        setWorkshops(data.workshops || []);
       }
     } catch {
       setMessage('載入失敗');
@@ -174,46 +172,6 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
         window.dispatchEvent(new Event('inventory-updated'));
         if (data.user.level && data.user.level > userLevel && onLevelUp) {
           onLevelUp(data.user.level);
-        }
-      } else {
-        setMessage(data.message || '購買失敗');
-      }
-    } catch {
-      setMessage('網路錯誤');
-    } finally {
-      setBuying(null);
-    }
-  };
-
-  // 加工廠購買（走 /api/shop/buy-livestock 流程）
-  const handleBuyWorkshop = async (item: LivestockInfo) => {
-    if (userGoldState < item.buyPrice) {
-      setMessage('金幣不足！');
-      return;
-    }
-    if (userLevel < item.requiredLevel) {
-      setMessage(`需要等級 ${item.requiredLevel} 才能購買`);
-      return;
-    }
-    setBuying(item.id);
-    setMessage('');
-    try {
-      const res = await authFetch('/api/shop/buy-livestock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ livestockKey: item.id, amount: 1 }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage(data.message);
-        setUserGoldState(data.user.gold);
-        onPurchaseSuccess(data.user.gold, data.message);
-        // 進入放置模式
-        if (data.action === 'PLACE_BUILDING') {
-          if (data.buildingType === 'food_workshop') {
-            window.dispatchEvent(new CustomEvent('startFoodWorkshopPlacement'));
-          }
-          onClose();
         }
       } else {
         setMessage(data.message || '購買失敗');
@@ -275,21 +233,34 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
 
     // ── 普通飼料：直接寫入 livestock localStorage（不走小雞邏輯）──
     const isFeed = item.id === 'feed_normal' || item.nameZhTw === '普通飼料';
+    console.log('[BUY FEED CHECK]', {
+      itemId: item.id,
+      itemIdType: typeof item.id,
+      nameZhTw: item.nameZhTw,
+      isFeed,
+      item: JSON.parse(JSON.stringify(item)),
+    });
     if (isFeed) {
-      // ── 普通飼料：走 API（寫入 item_type=item，item_id=2）──
+      console.log('[5173 FEED BUY START]', { itemId: item.id, gold: userGoldState, buyPrice: item.buyPrice });
+      if (userGoldState < item.buyPrice) { setMessage('金幣不足！'); return; }
+      if (userLevel < item.requiredLevel) { setMessage(`需要等級 ${item.requiredLevel} 才能購買`); return; }
       setBuying(item.id);
       setMessage('');
       try {
-        const res = await authFetch('/api/shop/buy-livestock', {
+        const res = await authFetch('/api/shop/buy-item', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ livestockKey: item.id, amount: 1 }),
+          body: JSON.stringify({ itemId: 2, amount: 1 }),
         });
         const data = await res.json();
+        console.log('[5173 FEED BUY API RESPONSE]', data);
         if (data.success) {
           setMessage(data.message);
           setUserGoldState(data.user.gold);
           onPurchaseSuccess(data.user.gold, data.message);
+          // ✅ 購買成功後重新抓背包，確保 state.items 有最新庫存
+          await backpackSystem.fetchAll();
+          // ✅ 同時通知其他系統
           window.dispatchEvent(new Event('inventory-updated'));
         } else {
           setMessage(data.message || '購買失敗');
@@ -379,15 +350,11 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
         onPurchaseSuccess(data.user.gold, data.message);
         window.dispatchEvent(new Event('inventory-updated'));
 
-        // 建築放置：根據建築類型進入對應放置模式
+        // 雞舍：進入放置模式
         if (data.action === 'PLACE_BUILDING') {
-          const buildingType = data.buildingType || 'chicken_coop';
-          if (buildingType === 'chicken_coop') {
-            setChickenStatus(prev => ({ ...prev, pendingCoop: true }));
-            window.dispatchEvent(new CustomEvent('startCoopPlacement'));
-          } else if (buildingType === 'food_workshop') {
-            window.dispatchEvent(new CustomEvent('startFoodWorkshopPlacement'));
-          }
+          // 先設定 pendingCoop = true（已購買但未放置），避免重複扣金幣
+          setChickenStatus(prev => ({ ...prev, pendingCoop: true }));
+          window.dispatchEvent(new CustomEvent('startCoopPlacement'));
           onClose();
         }
         // 小雞/飼料：重新整理雞舍狀態（從 localStorage 讀）
@@ -517,12 +484,6 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
             variant={activeTab === 'livestock' ? 'success' : 'normal'}
           >
             畜牧 🐔
-          </PixelButton>
-          <PixelButton
-            onClick={() => setActiveTab('workshops')}
-            variant={activeTab === 'workshops' ? 'success' : 'normal'}
-          >
-            加工廠 🏭
           </PixelButton>
         </div>
 
@@ -834,9 +795,22 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             {levelLocked && <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>(Lv.{item.requiredLevel} 解鎖)</span>}
                           </div>
                           <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>{item.description}</div>
-                          <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>
-                            持有 {(item.id === 'feed_normal' ? itemCounts[2] : livestockCounts[item.id]) ?? 0} 個
-                          </div>
+                          {(() => {
+                            const rawCount = itemCounts[2];
+                            const state = backpackSystem.getState();
+                            const feedFromItems = (state.items ?? []).find(i => Number(i.itemId ?? i.item_id ?? i.id) === 2);
+                            const feedFromLivestock = (state.livestock ?? []).find(i => Number(i.itemId ?? i.item_id ?? i.id) === 2);
+                            console.log('[FEED DISPLAY DEBUG]', {
+                              itemCounts,
+                              rawCount,
+                              feedFromItems,
+                              feedFromLivestock,
+                              stateItems: state.items,
+                              stateLivestock: state.livestock,
+                            });
+                            const displayCount = rawCount ?? feedFromItems?.amount ?? feedFromLivestock?.amount ?? 0;
+                            return <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>持有 {displayCount} 個</div>;
+                          })()}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -847,74 +821,6 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                           variant="success"
                         >
                           {buying === item.id ? '購買中...' : '購買'}
-                        </PixelButton>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* 加工廠分頁 */}
-            {activeTab === 'workshops' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-                {workshops.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '20px', color: '#aaa' }}>目前沒有可購買的加工廠</div>
-                ) : workshops.map(item => {
-                  const levelLocked = userLevel < item.requiredLevel;
-                  const goldLocked = userGoldState < item.buyPrice;
-                  const isDisabled = goldLocked || levelLocked || buying === item.id;
-
-                  // 從 localStorage 讀取是否已放置
-                  const workshopData = (() => {
-                    try {
-                      const raw = localStorage.getItem('tlo_farm_food_workshop');
-                      return raw ? JSON.parse(raw) : null;
-                    } catch { return null; }
-                  })();
-                  const placed = !!workshopData && (workshopData.x !== undefined);
-                  const pending = false;
-
-                  let buttonLabel = '購買';
-                  if (placed) { buttonLabel = '已放置'; }
-                  if (pending) { buttonLabel = '放置中'; }
-
-                  return (
-                    <div key={item.id} style={{
-                      background: '#fff',
-                      border: '4px solid #5C3D2E',
-                      borderRadius: '2px',
-                      padding: '10px 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      boxShadow: '3px 3px 0 #d4c4a8',
-                      opacity: levelLocked ? 0.6 : 1,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <img src={`/assets/buildings/${item.sprite}`} alt={item.nameZhTw} style={{ width: 52, height: 52, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>
-                            {item.nameZhTw}
-                            {levelLocked && <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>(Lv.{item.requiredLevel} 解鎖)</span>}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>{item.description}</div>
-                          {placed && <div style={{ fontSize: '11px', color: '#27AE60', marginTop: '2px' }}>已放置</div>}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#C0392B' }}>{item.buyPrice} 金幣</span>
-                        <PixelButton
-                          onClick={() => {
-                            if (placed) return;
-                            handleBuyWorkshop(item);
-                          }}
-                          disabled={isDisabled || placed}
-                          variant="success"
-                        >
-                          {buying === item.id ? '購買中...' : buttonLabel}
                         </PixelButton>
                       </div>
                     </div>
