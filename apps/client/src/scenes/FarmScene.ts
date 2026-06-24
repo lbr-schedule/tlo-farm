@@ -182,7 +182,12 @@ export default class FarmScene extends Phaser.Scene {
   private chickenCoopTileY = 0;
   private chickenCoopSprite: Phaser.GameObjects.Sprite | null = null;
 
-  // ── 雞舍放置模式 ──
+  // ── 食品工坊狀態 ──
+  private foodWorkshopPlaced = false;
+  private foodWorkshopTileX = 0;
+  private foodWorkshopTileY = 0;
+  private foodWorkshopSprite: Phaser.GameObjects.Sprite | null = null;
+
   // ── 農地位置(instance variable 供 placement system 使用)──
   private farmStartX = 0;
   private farmStartY = 0;
@@ -196,6 +201,8 @@ export default class FarmScene extends Phaser.Scene {
   private coopPlacementTileY = 0;
   private coopChickenStatus: any = null;
   private coopChickenPollTimer: Phaser.Time.TimerEvent | null = null;
+  // ── 當前正在放置的建築類型 ──
+  private currentBuildingType: string = '';
   private _startCoopPlacement = () => {};
   private _coopPlacementListenerRegistered = false;
   private farmlandObjects: Phaser.GameObjects.Container[] = [];
@@ -291,6 +298,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.load.image('chicken_coop', '/assets/buildings/chicken_coop.png');
     this.load.image('chick_baby', '/assets/animals/chick_baby.png');
     this.load.image('chicken_adult', '/assets/animals/chicken_adult.png');
+    this.load.image('food_workshop', '/assets/buildings/食品工坊.png');
   }
 
   create() {
@@ -455,6 +463,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     window.addEventListener('inventory-updated', () => {
       console.log('[EVENT] inventory-updated received, refetching backpack');
       backpackSystem.fetchAll();
+    });
+
+    // ── 監聽食品工坊放置事件 ──
+    window.addEventListener('startFoodWorkshopPlacement', () => {
+      console.log('[EVENT] startFoodWorkshopPlacement received');
+      this.startFoodWorkshopPlacement();
     });
   }
 
@@ -2133,6 +2147,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     }
 
     console.log('[ENTER BUILDING MODE]', buildingType);
+    this.currentBuildingType = buildingType;
     this.farmInputEnabled = true;
 
     // 先 clearAllPopups(coopPlacementMode 此時還是 false,不會觸發 cancelCoopPlacement)
@@ -3220,41 +3235,105 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.exitBuildingPlacement(reason);
   }
 
-  // ── 確認放置雞舍 ──
+  // ── 確認放置（分流的中心點）──
   private async confirmCoopPlacement(tileX: number, tileY: number) {
-    if (!this.coopPlacementValid) {
+    if (!this.coopPlacementValid) return;
+
+    const type = this.currentBuildingType;
+
+    // ── 雞舍 ──
+    if (type === 'chicken_coop') {
+      try {
+        const res = await authFetch('/api/animals/chicken-coop/place', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tileX, tileY }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.chickenCoopPlaced = true;
+          this.chickenCoopTileX = tileX;
+          this.chickenCoopTileY = tileY;
+          this.pendingChickenCoop = false;
+          this.renderChickenCoop();
+          this.syncChickenCoopStatus();
+          this.startChickenPoll();
+          this.events.emit('chickenCoopPlaced');
+          this.cancelCoopPlacement('place_success');
+          console.log('[FarmScene] Chicken coop placed at', tileX, tileY);
+        }
+      } catch (err) {
+        console.error('[FarmScene] Place coop error:', err);
+      }
       return;
     }
 
-    // 先停在放置模式,等 API 成功再退出
-    try {
-      const res = await authFetch('/api/animals/chicken-coop/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tileX, tileY }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        this.chickenCoopPlaced = true;
-        this.chickenCoopTileX = tileX;
-        this.chickenCoopTileY = tileY;
-        this.pendingChickenCoop = false;
-        this.renderChickenCoop();
-        this.syncChickenCoopStatus();
-        this.startChickenPoll();
-        // 通知商店 UI 更新雞舍狀態
-        this.events.emit('chickenCoopPlaced');
-        // 退出放置模式(清除 preview、DOM listener、debug timer)
-        this.cancelCoopPlacement('place_success');
-        console.log('[FarmScene] Chicken coop placed at', tileX, tileY);
-      } else {
-        console.warn('[FarmScene] Place coop failed:', data.message);
-        // API 失敗:留在放置模式,讓玩家重選位置
-      }
-    } catch (err) {
-      console.error('[FarmScene] Place coop error:', err);
-      // 網路錯誤:留在放置模式
+    // ── 食品工坊 ──
+    if (type === 'food_workshop') {
+      // 直接本地寫入 localStorage（後端暫不建表）
+      const existing = this.loadWorkshopLocalState();
+      const data = existing || {};
+      data.x = tileX;
+      data.y = tileY;
+      data.level = 1;
+      data.queue1 = null;
+      data.queue2 = null;
+      localStorage.setItem('tlo_farm_food_workshop', JSON.stringify(data));
+
+      this.foodWorkshopPlaced = true;
+      this.foodWorkshopTileX = tileX;
+      this.foodWorkshopTileY = tileY;
+      this.renderFoodWorkshop();
+      this.cancelCoopPlacement('place_success');
+      this.events.emit('foodWorkshopPlaced');
+      console.log('[FarmScene] Food workshop placed at', tileX, tileY);
+      return;
     }
+  }
+
+  // ── 食品工坊：讀取本地狀態 ──
+  private loadWorkshopLocalState(): Record<string, unknown> | null {
+    try {
+      const raw = localStorage.getItem('tlo_farm_food_workshop');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  // ── 食品工坊：渲染已放置的工坊 ──
+  private renderFoodWorkshop() {
+    if (!this.foodWorkshopPlaced) return;
+
+    if (this.foodWorkshopSprite) {
+      this.foodWorkshopSprite.destroy();
+      this.foodWorkshopSprite = null;
+    }
+
+    const farmStartX = this.farmStartX;
+    const farmStartY = this.farmStartY;
+    const pixelX = farmStartX + this.foodWorkshopTileX * this.FARM_SIZE + this.FARM_SIZE;
+    const pixelY = farmStartY + this.foodWorkshopTileY * this.FARM_SIZE + this.FARM_SIZE;
+
+    const sprite = this.add.sprite(pixelX, pixelY, 'food_workshop');
+    sprite.setDisplaySize(this.FARM_SIZE * 2, this.FARM_SIZE * 2);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDepth(5);
+
+    // 點擊開啟管理介面
+    sprite.setInteractive(new Phaser.Geom.Rectangle(0, 0, this.FARM_SIZE * 2, this.FARM_SIZE * 2), Phaser.Geom.Rectangle.Contains);
+    sprite.on('pointerdown', () => {
+      this.events.emit('openFoodWorkshop');
+    });
+
+    this.foodWorkshopSprite = sprite;
+    console.log('[FarmScene] Food workshop sprite rendered at', pixelX, pixelY);
+  }
+
+  // ── 食品工坊：進入放置模式 ──
+  private startFoodWorkshopPlacement() {
+    this.enterBuildingPlacement('food_workshop');
   }
 
   // ============================================================

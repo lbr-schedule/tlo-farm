@@ -14,6 +14,7 @@ import PlayerModal from '../components/ui/PlayerModal';
 import AvatarModal from '../components/ui/AvatarModal';
 import EventModal from '../components/ui/EventModal';
 import ChickenCoopModal from '../components/ui/ChickenCoopModal';
+import FoodWorkshopModal from '../components/ui/FoodWorkshopModal';
 
 // 作物名稱到 ID 的映射（配合任務系統）
 const CROP_NAME_TO_ID: Record<string, number> = {
@@ -85,6 +86,7 @@ export default function GamePage() {
   const [showPlayer, setShowPlayer] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
   const [showChickenCoop, setShowChickenCoop] = useState(false);
+  const [showFoodWorkshop, setShowFoodWorkshop] = useState(false);
   const [showPlayerProfile, setShowPlayerProfile] = useState(false);
   const [playerToast, setPlayerToast] = useState('');
   const [editFarmOpen, setEditFarmOpen] = useState(false);
@@ -211,6 +213,9 @@ export default function GamePage() {
       });
       scene.events.on('openChickenCoop', () => {
         setShowChickenCoop(true);
+      });
+      scene.events.on('openFoodWorkshop', () => {
+        setShowFoodWorkshop(true);
       });
       scene.events.on('chickenCoopPlaced', () => {
         // 強制重掛 ShopModal，使其重新取得雞舍狀態
@@ -689,6 +694,22 @@ export default function GamePage() {
           onGoldUpdate={(newGold) => {
             setDisplayUser(prev => ({ ...prev!, gold: newGold }));
             if (updateUser) updateUser({ gold: newGold });
+          }}
+        />
+      )}
+
+      {/* 彈窗：食品工坊 */}
+      {showFoodWorkshop && (
+        <FoodWorkshopModal
+          onClose={() => setShowFoodWorkshop(false)}
+          userGold={displayUser?.gold ?? 0}
+          userLevel={displayUser?.level ?? 1}
+          onGoldUpdate={(newGold) => {
+            setDisplayUser(prev => ({ ...prev!, gold: newGold }));
+            if (updateUser) updateUser({ gold: newGold });
+          }}
+          onWorkshopUpdate={() => {
+            window.dispatchEvent(new Event('inventory-updated'));
           }}
         />
       )}
