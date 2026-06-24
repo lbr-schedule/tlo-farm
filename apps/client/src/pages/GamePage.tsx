@@ -662,8 +662,12 @@ export default function GamePage() {
             const scene = gameRef.current?.scene.getScene('FarmScene');
             if (scene) scene.events.emit('extraFarmsUnlocked');
           }
+          if (pendingLevelUp >= 10) {
+            const scene = gameRef.current?.scene.getScene('FarmScene');
+            if (scene) scene.events.emit('workshopUnlocked');
+          }
           setPendingLevelUp(null);
-        }} />
+        }} unlocks={pendingLevelUp >= 10 ? ['workshop'] : []} />
       )}
 
       {/* 彈窗：訂單 */}

@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 interface LevelUpModalProps {
   newLevel: number;
   onClose: () => void;
+  unlocks?: string[];
 }
 
-export default function LevelUpModal({ newLevel, onClose }: LevelUpModalProps) {
+export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelUpModalProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -80,7 +81,11 @@ export default function LevelUpModal({ newLevel, onClose }: LevelUpModalProps) {
           fontSize: '15px',
           marginBottom: '20px',
         }}>
-          可以購買新的作物種子了！
+          {newLevel >= 10 && unlocks.includes('workshop')
+            ? '🏭 食品工坊已解鎖！前往商店購買吧！'
+            : newLevel >= 8
+            ? '🌾 可以購買新的作物種子了！'
+            : '可以購買新的作物種子了！'}
         </div>
 
         {/* 點擊關閉提示 */}

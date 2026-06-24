@@ -727,7 +727,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // 作物固定置於農地中央再套用 visual offset
     const cropImg = this.add.image(pos.x, pos.y, spriteKey);
-    const scale = (stage === 'seedling') ? 0.8 : 1.0;
+    // 營養不良(dry)狀態圖片寬高各縮小 8px
+    const isDry = stage === 'dry';
+    const scale = (stage === 'seedling') ? 0.8 : (isDry ? 0.86 : 1.0);
     cropImg.setDisplaySize(100 * scale, 100 * scale);
     cropImg.setOrigin(0.5, 1);
     container.add(cropImg);
@@ -768,11 +770,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (state.plantedAt && state.finishAt && now >= state.finishAt) return 'mature';
 
     // 成長進度判斷
+    const cropKey = state.cropId ? (CROP_ID_TO_KEY[state.cropId] ?? '') : '';
     if (!state.plantedAt || !state.finishAt) return 'seedling';
     const total = state.finishAt - state.plantedAt;
     const elapsed = now - state.plantedAt;
     const ratio = Math.min(1, Math.max(0, elapsed / total));
     if (ratio < 0.5) return 'seedling';
+    // 小麥與玉米：跳過 growing 圖，直接維持 seedling 直到成熟
+    if (cropKey === 'wheat' || cropKey === 'corn') return 'seedling';
     return 'growing';
   }
 

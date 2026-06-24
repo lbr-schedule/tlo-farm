@@ -1,46 +1,63 @@
 import { useEffect, useState } from 'react';
 import PixelWindow from './PixelWindow';
-import { backpackSystem } from '../../systems/BackpackSystem';
 
 interface FoodWorkshopModalProps {
   onClose: () => void;
   userGold: number;
   userLevel?: number;
   onGoldUpdate?: (gold: number) => void;
-  onExpUpdate?: (exp: number) => void;
+  onExpUpdate?: (exp: number, level: number) => void;
   onWorkshopUpdate?: () => void;
 }
 
-// 精緻麵粉配方（PR001）
+// 精緻麵粉配方（PR001）- 必須與 server WORKSHOP_RECIPES 一致
 const FLOUR_RECIPE = {
   productId: 'PR001',
   productName: '精緻麵粉',
-  productSprite: '精緻麵粉.png',
   materialName: '小麥',
-  materialSprite: '小麥果實.png',
   materialAmount: 2,
   craftTimeSec: 5 * 60, // 5 分鐘
   exp: 3,
   sellPrice: 30,
 };
 
-// 小麥在 crops 表的 id（GDD C001 = 1）
+// 小麥在 crops 表的 id = 1（GDD C001）
 const WHEAT_CROP_ID = 1;
-// 精緻麵粉當作 items 表 id = 100（加工品專用區間）
+// 精緻麵粉 items 表 id = 100（加工品區間）
 const FLOUR_ITEM_ID = 100;
 
-function getWorkshopData() {
-  try {
-    const raw = localStorage.getItem('tlo_farm_food_workshop');
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+interface Job {
+  id: number;
+  productId: string;
+  productName: string;
+  status: string;
+  slotIndex: number;
+  startedAt: number;
+  finishAt: number;
 }
 
-function saveWorkshopData(data: Record<string, unknown>) {
-  localStorage.setItem('tlo_farm_food_workshop', JSON.stringify(data));
+interface WorkshopState {
+  workshopId: number | null;
+  hasWorkshop: boolean;
+  isPlaced: boolean;
+  jobs: Job[];
+  wheatAmount: number;
+  flourAmount: number;
+  loading: boolean;
+  message: string;
+  messageType: 'ok' | 'err';
+}
+
+function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = localStorage.getItem('tlo_token');
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
 }
 
 export default function FoodWorkshopModal({
@@ -49,128 +66,127 @@ export default function FoodWorkshopModal({
   userLevel,
   onGoldUpdate,
   onExpUpdate,
+  onWorkshopUpdate,
 }: FoodWorkshopModalProps) {
-  const [gold, setGold] = useState(userGold);
-  const [level] = useState(userLevel ?? 1);
-  const [message, setMessage] = useState('');
-  const [crafting, setCrafting] = useState(false);
+  const [state, setState] = useState<WorkshopState>({
+    workshopId: null,
+    hasWorkshop: false,
+    isPlaced: false,
+    jobs: [],
+    wheatAmount: 0,
+    flourAmount: 0,
+    loading: true,
+    message: '',
+    messageType: 'ok',
+  });
 
-  // 佇列狀態：每個 queue 物件 { productId, startedAt, finishAt }
-  const [queue, setQueue] = useState<Array<{ productId: string; startedAt: number; finishAt: number }>>([]);
-  const [materialCount, setMaterialCount] = useState(0);
-  const [tick, setTick] = useState(0); // 用於每秒刷新
+  const capacity = 2; // Lv1 = 2 slots
 
-  const capacity = 2; // Lv1 兩格佇列
-
-  const refresh = () => {
-    const data = getWorkshopData();
-    const q: Array<{ productId: string; startedAt: number; finishAt: number }> = [];
-    if (data?.queue1?.productId) q.push(data.queue1);
-    if (data?.queue2?.productId) q.push(data.queue2);
-    setQueue(q);
-
-    // 讀取背包小麥數量
-    const items = backpackSystem.getState().items;
-    const wheat = items.find(i => i.itemType === 'crop' && i.itemId === WHEAT_CROP_ID);
-    setMaterialCount(wheat?.amount ?? 0);
+  const fetchStatus = async () => {
+    try {
+      const res = await authFetch('/api/workshop/status');
+      const data = await res.json();
+      if (data.success) {
+        const ws = data.workshops?.find((w: any) => w.workshopType === 'P001');
+        setState(prev => ({
+          ...prev,
+          workshopId: ws?.id ?? null,
+          hasWorkshop: !!ws,
+          isPlaced: ws?.isPlaced === 1,
+          jobs: data.jobs || [],
+          wheatAmount: data.inventory?.wheat ?? 0,
+          flourAmount: data.inventory?.flour ?? 0,
+          loading: false,
+        }));
+      }
+    } catch {
+      setState(prev => ({ ...prev, loading: false, message: '無法載入加工廠狀態', messageType: 'err' }));
+    }
   };
 
   useEffect(() => {
-    refresh();
-    // 每秒計時器更新
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(interval);
+    fetchStatus();
   }, []);
 
-  const hasBuilding = !!getWorkshopData();
-  const canCraft = hasBuilding && materialCount >= FLOUR_RECIPE.materialAmount && queue.length < capacity;
+  const setMsg = (message: string, messageType: 'ok' | 'err' = 'ok') => {
+    setState(prev => ({ ...prev, message, messageType }));
+  };
 
-  const handleCraft = () => {
-    if (!hasBuilding) {
-      setMessage('請先放置食品工坊！');
-      return;
+  const handleCraft = async () => {
+    const { workshopId, jobs, wheatAmount } = state;
+    if (!workshopId) { setMsg('請先放置食品工坊', 'err'); return; }
+    if (!state.isPlaced) { setMsg('食品工坊尚未放置', 'err'); return; }
+    if (jobs.filter(j => j.status === 'processing' || j.status === 'completed').length >= capacity) {
+      setMsg('佇列已滿', 'err'); return;
     }
-    if (materialCount < FLOUR_RECIPE.materialAmount) {
-      setMessage('小麥不足！需要 2 個小麥');
-      return;
-    }
-    if (queue.length >= capacity) {
-      setMessage('佇列已滿！');
-      return;
+    if (wheatAmount < FLOUR_RECIPE.materialAmount) {
+      setMsg('小麥不足！需要 2 個小麥', 'err'); return;
     }
 
-    setCrafting(true);
-    setMessage('');
-
+    setMsg('');
     try {
-      // 扣背包小麥
-      const deducted = backpackSystem.deductCrop(WHEAT_CROP_ID, FLOUR_RECIPE.materialAmount);
-      if (!deducted) {
-        setMessage('小麥不足！');
-        setCrafting(false);
-        return;
+      const res = await authFetch('/api/workshop/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workshopId, productId: FLOUR_RECIPE.productId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const newJob: Job = {
+          id: Date.now(), // optimistic
+          productId: data.job.productId,
+          productName: data.job.productName,
+          status: data.job.status,
+          slotIndex: data.job.slotIndex,
+          startedAt: data.job.startedAt,
+          finishAt: data.job.finishAt,
+        };
+        setState(prev => ({
+          ...prev,
+          jobs: [...prev.jobs, newJob],
+          wheatAmount: data.job.remainingWheat ?? Math.max(0, prev.wheatAmount - FLOUR_RECIPE.materialAmount),
+          message: data.message,
+          messageType: 'ok',
+        }));
+        setTimeout(() => setMsg(''), 3000);
+      } else {
+        setMsg(data.message || '製作失敗', 'err');
       }
-
-      // 寫入佇列
-      const data = getWorkshopData() || {};
-      const now = Date.now();
-      const slotKey = !data.queue1?.productId ? 'queue1' : 'queue2';
-      const slot = {
-        productId: FLOUR_RECIPE.productId,
-        startedAt: now,
-        finishAt: now + FLOUR_RECIPE.craftTimeSec * 1000,
-      };
-      data[slotKey] = slot;
-      saveWorkshopData(data);
-
-      // 更新體驗（加工不給額外經驗，完成領取才給）
-      setMaterialCount(prev => Math.max(0, prev - FLOUR_RECIPE.materialAmount));
-      refresh();
-      setMessage('開始製作精緻麵粉！');
-
-      // 通知農場更新顯示（如果需要）
-      window.dispatchEvent(new CustomEvent('food-workshop-updated'));
-
-    } catch (e) {
-      // revert 背包
-      backpackSystem.addItem('crop', WHEAT_CROP_ID, FLOUR_RECIPE.materialAmount);
-      setMessage('製作失敗');
-    } finally {
-      setCrafting(false);
+    } catch {
+      setMsg('網路錯誤', 'err');
     }
   };
 
-  const handleCollect = (slotKey: 'queue1' | 'queue2') => {
-    const data = getWorkshopData();
-    if (!data?.[slotKey]?.productId) return;
-
-    const slot = data[slotKey] as { productId: string; startedAt: number; finishAt: number };
-    const now = Date.now();
-
-    if (now < slot.finishAt) {
-      setMessage('還沒製作完成！');
-      return;
+  const handleCollect = async (job: Job) => {
+    try {
+      const res = await authFetch('/api/workshop/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setState(prev => ({
+          ...prev,
+          jobs: prev.jobs.filter(j => j.id !== job.id),
+          flourAmount: prev.flourAmount + 1,
+          message: data.message,
+          messageType: 'ok',
+        }));
+        if (data.leveledUp && data.user) {
+          onExpUpdate?.(data.user.exp, data.user.level);
+        }
+        onWorkshopUpdate?.();
+        setTimeout(() => setMsg(''), 3000);
+      } else {
+        setMsg(data.message || '領取失敗', 'err');
+      }
+    } catch {
+      setMsg('網路錯誤', 'err');
     }
-
-    // 產物進背包
-    backpackSystem.addItem('processed', FLOUR_ITEM_ID, 1);
-
-    // 清除佇列
-    delete data[slotKey];
-    saveWorkshopData(data);
-
-    refresh();
-    onWorkshopUpdate?.();
-    setMessage(`領取「${FLOUR_RECIPE.productName}」成功！`);
   };
 
   const now = Date.now();
-
-  // 每個佇列的剩餘秒數
-  const queue1Remaining = queue[0] ? Math.max(0, Math.ceil((queue[0].finishAt - now) / 1000)) : null;
-  const queue2Remaining = queue[1] ? Math.max(0, Math.ceil((queue[1].finishAt - now) / 1000)) : null;
-  const queue1Done = queue[0] ? now >= queue[0].finishAt : false;
-  const queue2Done = queue[1] ? now >= queue[1].finishAt : false;
 
   const fmtTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -178,20 +194,25 @@ export default function FoodWorkshopModal({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  // Build queue state: two slots (slot 0 and slot 1)
+  const queueBySlot: (Job | null)[] = [null, null];
+  for (const job of state.jobs) {
+    if (job.status === 'processing' || job.status === 'completed') {
+      if (job.slotIndex === 0 || job.slotIndex === 1) {
+        queueBySlot[job.slotIndex] = job;
+      }
+    }
+  }
+
+  const activeCount = queueBySlot.filter(j => j !== null).length;
+  const canCraft = state.hasWorkshop && state.isPlaced &&
+    activeCount < capacity &&
+    state.wheatAmount >= FLOUR_RECIPE.materialAmount;
+
   return (
     <PixelWindow title="🏭 食品工坊" onClose={onClose} width={320}>
       <style>{`
-        .fwm-btn {
-          width: 100%;
-          padding: 10px 16px;
-          border-radius: 6px;
-          font-size: 14px;
-          font-weight: 700;
-          cursor: pointer;
-          font-family: 'Cubic 11', sans-serif;
-          border: 3px solid;
-          margin-bottom: 8px;
-        }
+        .fwm-btn { width: 100%; padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'Cubic 11', sans-serif; border: 3px solid; margin-bottom: 8px; }
         .fwm-btn:active:not(:disabled) { opacity: 0.8; }
         .fwm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .fwm-craft-btn { background: #E8A020; color: #3B2412; border-color: #5A3418; }
@@ -217,16 +238,22 @@ export default function FoodWorkshopModal({
         .fwm-recipe-row { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #3B2412; }
       `}</style>
 
-      {hasBuilding ? (
+      {state.loading ? (
+        <div style={{ textAlign: 'center', padding: '20px', color: '#7A6A59' }}>載入中...</div>
+      ) : !state.hasWorkshop ? (
+        <div className="fwm-locked">
+          請先在商店購買並放置食品工坊
+        </div>
+      ) : (
         <div style={{ padding: '8px 4px' }}>
           {/* 基本資訊 */}
           <div className="fwm-info-row">
             <span>食品工坊</span>
-            <span>Lv1</span>
+            <span>Lv1 · P001</span>
           </div>
           <div className="fwm-info-row">
             <span>佇列</span>
-            <span>{queue.length} / {capacity}</span>
+            <span>{activeCount} / {capacity}</span>
           </div>
 
           {/* 配方資訊 */}
@@ -234,10 +261,9 @@ export default function FoodWorkshopModal({
             <div className="fwm-recipe-title">🍞 精緻麵粉（PR001）</div>
             <div className="fwm-recipe-row">
               <span>需要：</span>
-              <img src="/assets/crops/小麥果實.png" width="18" height="18" style={{ imageRendering: 'pixelated' }} alt="小麥" />
               <span>小麥 × {FLOUR_RECIPE.materialAmount}</span>
-              <span style={{ color: materialCount >= FLOUR_RECIPE.materialAmount ? '#2E7D32' : '#C0392B' }}>
-                （背包：{materialCount}）
+              <span style={{ color: state.wheatAmount >= FLOUR_RECIPE.materialAmount ? '#2E7D32' : '#C0392B' }}>
+                （背包：{state.wheatAmount}）
               </span>
             </div>
             <div className="fwm-recipe-row">
@@ -245,33 +271,34 @@ export default function FoodWorkshopModal({
             </div>
             <div className="fwm-recipe-row">
               <span>產出：</span>
-              <img src="/assets/processed/精緻麵粉.png" width="18" height="18" style={{ imageRendering: 'pixelated' }} alt="麵粉" />
               <span>精緻麵粉 × 1（+{FLOUR_RECIPE.exp} EXP）</span>
             </div>
           </div>
 
           {/* 訊息 */}
-          {message && (
-            <div className={`fwm-msg ${message.includes('失敗') || message.includes('不足') || message.includes('錯誤') || message.includes('還沒') ? 'fwm-msg-err' : 'fwm-msg-ok'}`}>
-              {message}
+          {state.message && (
+            <div className={`fwm-msg fwm-msg-${state.messageType}`}>
+              {state.message}
             </div>
           )}
 
           {/* 佇列 1 */}
           <div className="fwm-queue-slot">
             <div className="fwm-queue-label">佇列 1</div>
-            {queue[0] ? (
-              queue1Done ? (
+            {queueBySlot[0] ? (
+              (queueBySlot[0]!.status === 'completed' || now >= queueBySlot[0]!.finishAt) ? (
                 <>
                   <div className="fwm-queue-name">✅ 精緻麵粉 — 完成！</div>
-                  <button className="fwm-btn fwm-collect-btn" onClick={() => handleCollect('queue1')}>
+                  <button className="fwm-btn fwm-collect-btn" onClick={() => handleCollect(queueBySlot[0]!)}>
                     領取精緻麵粉 ×1
                   </button>
                 </>
               ) : (
                 <>
                   <div className="fwm-queue-name">製作中...</div>
-                  <div className="fwm-queue-timer">剩 {fmtTime(queue1Remaining ?? 0)}</div>
+                  <div className="fwm-queue-timer">
+                    剩 {fmtTime(Math.ceil((queueBySlot[0]!.finishAt - now) / 1000))}
+                  </div>
                 </>
               )
             ) : (
@@ -282,18 +309,20 @@ export default function FoodWorkshopModal({
           {/* 佇列 2 */}
           <div className="fwm-queue-slot">
             <div className="fwm-queue-label">佇列 2</div>
-            {queue[1] ? (
-              queue2Done ? (
+            {queueBySlot[1] ? (
+              (queueBySlot[1]!.status === 'completed' || now >= queueBySlot[1]!.finishAt) ? (
                 <>
                   <div className="fwm-queue-name">✅ 精緻麵粉 — 完成！</div>
-                  <button className="fwm-btn fwm-collect-btn" onClick={() => handleCollect('queue2')}>
+                  <button className="fwm-btn fwm-collect-btn" onClick={() => handleCollect(queueBySlot[1]!)}>
                     領取精緻麵粉 ×1
                   </button>
                 </>
               ) : (
                 <>
                   <div className="fwm-queue-name">製作中...</div>
-                  <div className="fwm-queue-timer">剩 {fmtTime(queue2Remaining ?? 0)}</div>
+                  <div className="fwm-queue-timer">
+                    剩 {fmtTime(Math.ceil((queueBySlot[1]!.finishAt - now) / 1000))}
+                  </div>
                 </>
               )
             ) : (
@@ -305,12 +334,13 @@ export default function FoodWorkshopModal({
           <button
             className="fwm-btn fwm-craft-btn"
             onClick={handleCraft}
-            disabled={!canCraft || crafting}
+            disabled={!canCraft}
           >
-            {crafting ? '製作中...' :
-              materialCount < FLOUR_RECIPE.materialAmount
-                ? `🌾 小麥不足（需要 2 個）`
-                : queue.length >= capacity
+            {!state.isPlaced
+              ? '請先放置食品工坊'
+              : state.wheatAmount < FLOUR_RECIPE.materialAmount
+                ? `🌾 小麥不足（需要 ${FLOUR_RECIPE.materialAmount} 個）`
+                : activeCount >= capacity
                   ? '佇列已滿'
                   : '🔨 開始製作精緻麵粉'}
           </button>
@@ -319,10 +349,6 @@ export default function FoodWorkshopModal({
           <button className="fwm-btn fwm-close-btn" onClick={onClose}>
             關閉
           </button>
-        </div>
-      ) : (
-        <div className="fwm-locked">
-          請先在商店購買並放置食品工坊
         </div>
       )}
     </PixelWindow>

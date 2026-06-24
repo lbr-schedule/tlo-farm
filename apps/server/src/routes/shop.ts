@@ -383,16 +383,31 @@ router.post('/buy-livestock', async (req: AuthRequest, res: Response) => {
         });
       }
 
-      // 食品工坊：檢查 localStorage（後端暫不建表）
+      // 食品工坊：寫入 processing_workshops
       if (livestockKey === 'food_workshop') {
-        // 後端不檢查是否已放置（由前端 localStorage 控制）
+        // 檢查是否已有食品工坊記錄
+        const existingWs = await db.execute(
+          `SELECT id FROM processing_workshops WHERE user_id = ? AND workshop_type = 'P001'`,
+          [userId]
+        );
+        if (existingWs.rows && existingWs.rows.length > 0) {
+          return res.status(400).json({ success: false, message: '已有食品工坊，無法重複購買' });
+        }
+        // 預扣金幣
         await db.execute(`UPDATE users SET gold = gold - ? WHERE id = ?`, [totalCost, userId]);
+        // 建立加工廠記錄（未放置）
+        await db.execute(
+          `INSERT INTO processing_workshops (user_id, workshop_type, workshop_name, level, is_placed)
+           VALUES (?, 'P001', '食品工坊', 1, 0)`,
+          [userId]
+        );
         const updatedResult = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
         const updatedGold = updatedResult.rows?.[0]?.gold || 0;
         return res.json({
           success: true,
           action: 'PLACE_BUILDING',
           buildingType: 'food_workshop',
+          workshopType: 'P001',
           message: `購買成功！點擊農場放置食品工坊`,
           purchase: { itemKey: livestockKey, itemName: item.nameZhTw, amount, totalCost },
           user: { gold: updatedGold }

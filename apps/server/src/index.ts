@@ -12,6 +12,7 @@ import tasksRouter from './routes/tasks';
 import playerRouter from './routes/player';
 import eventsRouter from './routes/events';
 import animalsRouter from './routes/animals';
+import workshopRouter from './routes/workshop';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -58,6 +59,7 @@ app.use('/api/tasks', authMiddleware, tasksRouter);
 app.use('/api/player', authMiddleware, playerRouter);
 app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/animals', authMiddleware, animalsRouter);
+app.use('/api/workshop', authMiddleware, workshopRouter);
 
 // Serve client static files in production
 if (process.env.NODE_ENV === 'production') {

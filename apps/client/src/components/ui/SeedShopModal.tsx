@@ -62,6 +62,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
   const [userGoldState, setUserGoldState] = useState(userGold);
   const [seedCounts, setSeedCounts] = useState<Record<number, number>>({});
   const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
+  const [livestockCounts, setLivestockCounts] = useState<Record<number, number>>({});
   const [activeTab, setActiveTab] = useState<'seeds' | 'items' | 'livestock' | 'workshops'>('seeds');
   const { authFetch } = useAuth();
 
@@ -89,6 +90,9 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
       const iCounts: Record<number, number> = {};
       (state.items ?? []).forEach(i => { iCounts[i.itemId] = i.amount; });
       setItemCounts(iCounts);
+      const lCounts: Record<number, number> = {};
+      (state.livestock ?? []).forEach(l => { lCounts[l.itemId] = l.amount; });
+      setLivestockCounts(lCounts);
     });
     return unsub;
   }, []);
@@ -847,6 +851,9 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             {levelLocked && <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>(Lv.{item.requiredLevel} 解鎖)</span>}
                           </div>
                           <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>{item.description}</div>
+                          <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>
+                            持有 {livestockCounts[item.id] ?? 0} 個
+                          </div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
