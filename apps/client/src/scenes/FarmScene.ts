@@ -25,7 +25,6 @@ export interface TileData {
   soilState: 'dry' | 'watered'; // 土地視覺狀態
   readyAnimated?: boolean;
   growingStartedAt?: number;
-  locked?: boolean;
   isFertilized?: number;         // 0 或 1
   fertilizedAt?: number | null;
   fertilizerType?: string;
@@ -199,7 +198,6 @@ export default class FarmScene extends Phaser.Scene {
   private coopChickenPollTimer: Phaser.Time.TimerEvent | null = null;
   private _startCoopPlacement = () => {};
   private _coopPlacementListenerRegistered = false;
-  private userLevel: number = 1;
   private farmlandObjects: Phaser.GameObjects.Container[] = [];
   private debugGraphics: Phaser.GameObjects.Graphics | null = null;
   private placementMouseMoveHandler?: (event: MouseEvent) => void;
@@ -339,7 +337,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmStartY = this.farmStartY;
 
     //全部初始化為空(無硬編碼假資料)
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const px = farmStartX + col * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
@@ -358,16 +356,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       soilImg.setOrigin(0.5, 0.5); // 農地圖片置中
       farmContainer.add(soilImg);
 
-      const isLocked = i >= 6; // 第 6, 7 塊（index 6,7）預設鎖定
-      if (isLocked) {
-        const lockText = this.add.text(0, 0, '🔒', {
-          fontSize: '32px',
-        });
-        lockText.setOrigin(0.5, 0.5);
-        farmContainer.add(lockText);
-        farmContainer.setAlpha(0.5);
-      }
-
       this.farmState.set(i, {
         x: i % COLS,
         y: Math.floor(i / COLS),
@@ -381,7 +369,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         wateredAt: undefined,
         isWatered: false,
         cropStatus: 'needs_water',
-        locked: isLocked,
       });
 
       farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
@@ -410,6 +397,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       };
       window.addEventListener('startCoopPlacement', this._startCoopPlacement);
     }
+
+    this.events.on('extraFarmsUnlocked', () => {
+      console.log('[extraFarmsUnlocked] 等級 8 解鎖額外農地');
+      this.createExtraFarms();
+    });
 
     this.input.keyboard?.on('keydown-ESC', () => {
       this.clearAllPopups();
@@ -541,16 +533,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const data = await res.json();
 
       if (data.success && data.tiles) {
-        // 同步玩家等級
-        if (data.user?.level !== undefined) {
-          const oldLevel = this.userLevel;
-          this.userLevel = data.user.level;
-          // 等級 8 時自動解鎖額外農地
-          if (this.userLevel >= 8 && oldLevel < 8 && oldLevel > 0) {
-            this.unlockExtraFarms();
-          }
-        }
-
         for (const tile of data.tiles) {
           const index = tile.y * 3 + tile.x;
           if (this.farmState.has(index)) {
@@ -796,12 +778,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     const state = this.farmState.get(index);
     if (!state) return;
-
-    // 等級不夠，農地鎖定
-    if (state.locked) {
-      this.events.emit('game-toast', 'Lv.8 解鎖此農地');
-      return;
-    }
 
     // 清除舊選單
     this.clearAllPopups();
@@ -3286,10 +3262,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
   private showCropTooltip(index: number) {
     const state = this.farmState.get(index);
-    if (state?.locked) {
-      this.hideCropTooltip();
-      return;
-    }
     const cropName = state?.cropId
       ? (getCropDetails(state.cropId)?.nameZhTw ?? '作物')
       : '空農地';
@@ -3369,32 +3341,52 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
   // Lv8 解鎖額外兩塊農地（plot6, plot7）
   // ============================================================
-  private unlockExtraFarms() {
+  // 等級 8 解鎖時，按下 LevelUpModal 確認後呼叫此方法建立額外農地
+  private createExtraFarms() {
+    const COLS = 3;
     for (let i = 6; i <= 7; i++) {
-      const container = this.tiles.get(`${i}`);
-      if (!container) continue;
-      const state = this.farmState.get(i);
-      if (!state) continue;
-      if (!state.locked) continue;
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const px = this.farmStartX + col * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
+      const py = this.farmStartY + row * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
 
-      // 移除鎖頭
-      const lockChild = container.list.find(
-        c => c instanceof Phaser.GameObjects.Text && (c as Phaser.GameObjects.Text).text === '🔒'
+      const farmContainer = this.add.container(px, py);
+      farmContainer.setSize(this.FARM_SIZE, this.FARM_SIZE);
+      farmContainer.setInteractive(
+        new Phaser.Geom.Rectangle(0, 0, this.FARM_SIZE, this.FARM_SIZE),
+        Phaser.Geom.Rectangle.Contains
       );
-      if (lockChild) lockChild.destroy();
+      farmContainer.setData('index', i);
 
-      // 恢復正常透明度
-      container.setAlpha(1);
+      const soilImg = this.add.image(0, 0, 'tile_soil');
+      soilImg.setDisplaySize(this.FARM_SIZE, this.FARM_SIZE);
+      soilImg.setOrigin(0.5, 0.5);
+      farmContainer.add(soilImg);
 
-      // 更新狀態
       this.farmState.set(i, {
-        ...state,
-        locked: false,
+        x: i % COLS,
+        y: Math.floor(i / COLS),
+        type: 'soil',
+        state: 'empty',
+        cropState: 'empty',
+        soilState: 'dry',
+        cropId: undefined,
+        plantedAt: undefined,
+        finishAt: undefined,
+        wateredAt: undefined,
+        isWatered: false,
+        cropStatus: 'needs_water',
       });
 
-      // 顯示解鎖提示
-      this.events.emit('game-toast', `Lv.8 解鎖新農地！`);
+      farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
+      farmContainer.on('pointerover', () => this.showCropTooltip(i));
+      farmContainer.on('pointermove', (pointer: Phaser.Input.Pointer) => this.moveCropTooltip(pointer));
+      farmContainer.on('pointerout', () => this.hideCropTooltip());
+
+      this.tiles.set(`${i}`, farmContainer);
+      this.farmlandObjects.push(farmContainer);
     }
+    this.events.emit('game-toast', '新增農地 plot6、plot7！');
   }
 
   // ============================================================

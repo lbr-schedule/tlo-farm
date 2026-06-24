@@ -652,7 +652,13 @@ export default function GamePage() {
 
       {/* 彈窗：升級提示 */}
       {pendingLevelUp !== null && (
-        <LevelUpModal newLevel={pendingLevelUp} onClose={() => setPendingLevelUp(null)} />
+        <LevelUpModal newLevel={pendingLevelUp} onClose={() => {
+          if (pendingLevelUp >= 8) {
+            const scene = gameRef.current?.scene.getScene('FarmScene');
+            if (scene) scene.events.emit('extraFarmsUnlocked');
+          }
+          setPendingLevelUp(null);
+        }} />
       )}
 
       {/* 彈窗：訂單 */}
