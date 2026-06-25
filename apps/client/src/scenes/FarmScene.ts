@@ -193,7 +193,7 @@ export default class FarmScene extends Phaser.Scene {
   private coopPlacementValid = false;
   private coopPlacementTileX = 0;
   private coopPlacementTileY = 0;
-  private coopChickenStatus: any = null;
+  private coopChickenStatus: any = null;  // 來自 /api/animals/chicken-coop/status
   private coopChickenPollTimer: Phaser.Time.TimerEvent | null = null;
   private _startCoopPlacement = () => {};
   private _coopPlacementListenerRegistered = false;
@@ -432,14 +432,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // ── Phase2: load 在 sync 之前(確保本地 sprite 先被保護)──
     this.loadChickenCoopLocalState();
-    // Phase 2: 暫時停用 syncChickenCoopStatus(後端 sync 不得覆蓋本地雞舍)
-    // this.syncChickenCoopStatus();
+    // restore sprite 後，立即從 API 取狀態，讓 coopChickenStatus 有 slots
+    // renderChickenCoop 已被 guard 保護，不會覆蓋已存在的 sprite
+    this.syncChickenCoopStatus();
 
     // ── Phase4: 監聽商店購買小雞後的更新事件 ──
     window.addEventListener('chicken-coop-animals-updated', () => {
-      console.log('[EVENT] chicken-coop-animals-updated received');
-      this.loadChickenCoopLocalState();
-      this.renderChicksInCoop();
+      console.log('[EVENT] chicken-coop-animals-updated received, syncing with API');
+      this.syncChickenCoopStatus();
     });
 
     // ── 監聽背包更新事件(讓雞舍操作後同步背包)──
@@ -2021,6 +2021,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     try {
       const res = await authFetch('/api/animals/chicken-coop/status');
       const data = await res.json();
+      console.log('[COOP STATUS FROM API]', {
+        success: data.success,
+        hasBuilding: data.hasBuilding,
+        tileX: data.tileX,
+        tileY: data.tileY,
+        slots: data.slots?.length,
+        slotStates: data.slots?.map((s: any) => s.state),
+      });
       if (data.success) {
         this.coopChickenStatus = data;
         this.coopChickenStatus.gold = data.gold;
@@ -2029,12 +2037,24 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           this.chickenCoopPlaced = true;
           this.chickenCoopTileX = data.tileX;
           this.chickenCoopTileY = data.tileY;
-          this.renderChickenCoop();
+          // 只有在 sprite 還沒建立過時才建立（避免破壞 restore 出來的雞舍位置）
+          if (!this.chickenCoopSprite) {
+            this.renderChickenCoop();
+          } else {
+            console.log('[SYNC] chickenCoopSprite already exists, skip renderChickenCoop — preserving current sprite position/size');
+          }
+          // API 回傳後立即用 server slots 渲染小雞（與商店狀態同步）
+          console.log('[SYNC hasBuilding=true] calling renderChicksInCoop');
+          this.renderChicksInCoop();
         } else {
           this.chickenCoopPlaced = false;
           if (this.chickenCoopSprite) {
-            if (DEBUG_COOP) console.log('[SYNC SKIPPED] local chicken coop exists, backend sync ignored in Phase 2');
-            return;
+            // sprite 已存在但 API 認為未放置（可能 tile_x=0 的邊界問題）
+            // 仍更新 coopChickenStatus，讓 renderChicksInCoop() 能拿到 slots
+            if (DEBUG_COOP) console.log('[SYNC] hasBuilding=false but sprite exists, still updating slots');
+            // 即使 hasBuilding=false，仍用 API slots 渲染雞（開場就要能看到雞）
+            console.log('[SYNC hasBuilding=false] calling renderChicksInCoop');
+            this.renderChicksInCoop();
           }
         }
       }
@@ -2574,8 +2594,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
     }
 
-    // 渲染小雞 sprites(renderChicksInCoop 會直接讀 localStorage)
-    this.renderChicksInCoop();
+    // 小雞 sprites 由 syncChickenCoopStatus() 的 API 回傳後統一渲染
+    // 不要在這裡呼叫 renderChicksInCoop()（coopChickenStatus 此時尚未取回）
 
     // 只有在需要保存時才寫入 localStorage(購買新雞舍時),restore 時不應覆蓋
     const shouldSave = options.save !== false;
@@ -2622,7 +2642,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         save: false,
         animals: state.animals ?? []
       });
-      // renderChicksInCoop 已在 placeChickenCoopLocal 內部調用,無需重複調用
+      // 立即從 API 取狀態，renderChicksInCoop 會在 API 回傳後被呼叫
+      this.syncChickenCoopStatus();
     } catch(e) {
       console.error('[LOCAL STORAGE LOAD ERROR]', e);
     }
@@ -2857,34 +2878,62 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       </div>`;
   }
 
-  private openChickenCoopPanel() {
+  // 點雞舍開面板：必須先從 API 取最新狀態，再 render
+  private async openChickenCoopPanel() {
     // 避免重複開啟
     if (this._coopPanelEl) return;
 
-    // ── 讀取雞舍狀態 ──
-    const savedRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    let animalCount = 0;
-    let babyCount = 0;
-    let adultCount = 0;
-    let capacity = 4;
+    // 記錄點擊前雞舍 sprite 狀態
+    if (this.chickenCoopSprite) {
+      const s = this.chickenCoopSprite;
+      console.log('[COOP BEFORE CLICK]', {
+        x: s.x, y: s.y,
+        scaleX: s.scaleX, scaleY: s.scaleY,
+        originX: s.originX, originY: s.originY,
+        displayWidth: s.displayWidth, displayHeight: s.displayHeight,
+        depth: s.depth,
+        FARM_SIZE: this.FARM_SIZE,
+      });
+    }
+
+    // ── 先取得 API 狀態（同步 coopChickenStatus）──
+    await this.syncChickenCoopStatus();
+
+    // 確認 sync 後雞舍 sprite 狀態
+    if (this.chickenCoopSprite) {
+      const s = this.chickenCoopSprite;
+      console.log('[COOP AFTER SYNC]', {
+        x: s.x, y: s.y,
+        scaleX: s.scaleX, scaleY: s.scaleY,
+        originX: s.originX, originY: s.originY,
+        displayWidth: s.displayWidth, displayHeight: s.displayHeight,
+        depth: s.depth,
+      });
+    }
+
+    // ── 從 API slots 讀取雞舍狀態 ──
+    const slots = this.coopChickenStatus?.slots ?? [];
+    const apiAnimalCount = slots.filter((s: any) => s.state !== 'EMPTY').length;
+    const apiCapacity = slots.length || 4;
+    // 從 API 推算生長階段：READY_TO_COLLECT / PRODUCING / READY_TO_FEED / BABY
+    const apiBabyCount = slots.filter((s: any) => s.state === 'BABY').length;
+    const apiAdultCount = apiAnimalCount - apiBabyCount;
+
+    // feedStatus / lastFedAt / eggCount 仍從 localStorage 讀（餵食/生蛋功能尚未重構）
     let feedStatus: 'none' | 'fed' = 'none';
     let lastFedAt: number | null = null;
     let eggCount = 0;
-    let animals: any[] = [];
-
+    const savedRaw = localStorage.getItem('tlo_farm_chicken_coop');
     if (savedRaw) {
       try {
         const savedData = JSON.parse(savedRaw);
-        animals = savedData.animals ?? [];
-        animalCount = animals.length;
-        babyCount = animals.filter((a: any) => a.stage === 'baby').length;
-        adultCount = animals.filter((a: any) => a.stage === 'adult').length;
-        capacity = savedData.capacity ?? 4;
         feedStatus = savedData.feedingStatus === 'fed' ? 'fed' : 'none';
         lastFedAt = savedData.lastFedAt ?? null;
         eggCount = savedData.eggCount ?? 0;
       } catch(e) {}
     }
+
+    console.log('[OPEN COOP PANEL] from API — animalCount:', apiAnimalCount, 'babyCount:', apiBabyCount, 'adultCount:', apiAdultCount, 'capacity:', apiCapacity, 'slots:', slots.length);
 
     // 背景遮罩
     const backdrop = document.createElement('div');
@@ -2974,21 +3023,21 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }, 1000);
     };
 
-    // ── 首次建立面板：讀狀態、render、binding──
+    // ── 首次建立面板：使用 API slots 渲染狀態──
     const initPanel = () => {
-      const raw = localStorage.getItem('tlo_farm_chicken_coop');
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      const animals = data.animals ?? [];
-      const animalCount = animals.length;
-      const babyCount = animals.filter((a: any) => a.stage === 'baby').length;
-      const adultCount = animals.filter((a: any) => a.stage === 'adult').length;
-      const feedStatus = data.feedingStatus === 'fed' ? 'fed' : 'none';
-      const lastFedAt = data.lastFedAt ?? null;
-      const eggCount = data.eggCount ?? 0;
-      const capacity = data.capacity ?? 4;
-      statusContainer.innerHTML = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity });
+      // 直接使用 openChickenCoopPanel 閉包中的 API slots 資料
+      // animalCount / capacity / babyCount / adultCount 全都來自 this.coopChickenStatus.slots
+      statusContainer.innerHTML = this.buildCoopStatusHtml({
+        animalCount: apiAnimalCount,
+        babyCount: apiBabyCount,
+        adultCount: apiAdultCount,
+        feedStatus,
+        lastFedAt,
+        eggCount,
+        capacity: apiCapacity,
+      });
       this.bindChickenCoopPanelEvents(panel);
+      console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
     };
     initPanel();
     startCountdownLoop();
@@ -3006,15 +3055,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ── Phase5: 取得雞舍內可活動區域(小雞走路範圍)──
+  // 與 renderChicksInCoop 的 inner area 完全一致，確保雞不會走出泥土地
   private getChickenCoopWalkArea() {
     if (!this.chickenCoopSprite) return null;
-    const coopX = this.chickenCoopSprite.x;
-    const coopY = this.chickenCoopSprite.y;
+    const bounds = this.chickenCoopSprite.getBounds();
     return {
-      x: coopX + 95,
-      y: coopY + 145,
-      width: 120,
-      height: 80,
+      x: bounds.x + bounds.width * 0.35,
+      y: bounds.y + bounds.height * 0.48,
+      width: bounds.width * 0.33,
+      height: bounds.height * 0.24,
     };
   }
 
@@ -3022,8 +3071,13 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   private startChickMovement(chick: Phaser.GameObjects.Image, area: { x: number; y: number; width: number; height: number }) {
     const move = () => {
       if (!chick.active) return;
-      const randomX = Math.max(area.x, Math.min(area.x + area.width, area.x + Math.random() * area.width));
-      const randomY = Math.max(area.y, Math.min(area.y + area.height, area.y + Math.random() * area.height));
+      // 雞的位置是絕對座標，area 的 x/y 是 walk area 左上角絕對座標
+      const minX = area.x;
+      const maxX = area.x + area.width;
+      const minY = area.y;
+      const maxY = area.y + area.height;
+      const randomX = minX + Math.random() * (maxX - minX);
+      const randomY = minY + Math.random() * (maxY - minY);
       this.tweens.add({
         targets: chick,
         x: randomX,
@@ -3044,34 +3098,102 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ── Phase4: 渲染雞舍內的小雞 sprites ──
+  // 渲染雞舍內的小雞 sprites
+  // 使用 this.coopChickenStatus.slots（來自 /api/animals/chicken-coop/status）
+  // 若 slot.state !== 'EMPTY' 表示該格有雞
   private renderChicksInCoop() {
-    if (!this.chickenCoopSprite) return;
+    console.log('[INIT COOP CHICKS RENDER START] spriteReady:', !!this.chickenCoopSprite, 'hasBuilding:', this.coopChickenStatus?.hasBuilding, 'slotsLength:', this.coopChickenStatus?.slots?.length ?? 'undefined');
+    if (!this.chickenCoopSprite) {
+      console.log('[RENDER CHICKS] chickenCoopSprite not ready, skipping');
+      return;
+    }
 
-    const raw = localStorage.getItem('tlo_farm_chicken_coop');
-    const coop = raw ? JSON.parse(raw) : null;
-    const animals = coop?.animals ?? [];
+    // 優先用 API slots，其次 fallback 讀 localStorage
+    const slots = this.coopChickenStatus?.slots;
+    let animals: any[] = [];
+    if (slots && slots.length > 0) {
+      animals = slots.filter((s: any) => s.state !== 'EMPTY');
+      console.log('[RENDER CHICKS FROM API] slots count:', slots.length, 'non-empty:', animals.length, 'states:', slots.map((s: any) => s.state));
+    } else {
+      const raw = localStorage.getItem('tlo_farm_chicken_coop');
+      const coop = raw ? JSON.parse(raw) : null;
+      animals = coop?.animals ?? [];
+      console.log('[RENDER CHICKS FROM LOCAL] animals count:', animals.length);
+    }
 
     this._chickSprites?.forEach(sprite => sprite.destroy());
     this._chickSprites = [];
 
-    const area = this.getChickenCoopWalkArea();
-    if (!area) return;
+    // 用 getBounds() 取得雞舍實際畫面範圍（origin 可能是 0,0）
+    const bounds = this.chickenCoopSprite.getBounds();
+    console.log('[COOP SPRITE BOUNDS]', {
+      spriteX: this.chickenCoopSprite.x,
+      spriteY: this.chickenCoopSprite.y,
+      originX: this.chickenCoopSprite.originX,
+      originY: this.chickenCoopSprite.originY,
+      scaleX: this.chickenCoopSprite.scaleX,
+      scaleY: this.chickenCoopSprite.scaleY,
+      displayWidth: this.chickenCoopSprite.displayWidth,
+      displayHeight: this.chickenCoopSprite.displayHeight,
+      boundsX: bounds.x,
+      boundsY: bounds.y,
+      boundsWidth: bounds.width,
+      boundsHeight: bounds.height,
+      boundsRight: bounds.right,
+      boundsBottom: bounds.bottom,
+    });
 
-    // 小雞在 walkArea 內分散站位
-    const positions = [
-      { x: area.x + 25, y: area.y + 25 },
-      { x: area.x + 65, y: area.y + 35 },
-      { x: area.x + 95, y: area.y + 25 },
-      { x: area.x + 55, y: area.y + 65 },
+    // 用 bounds 算雞舍內部泥土地活動區域（只在雞舍圍欄內的空地）
+    const innerMinX = bounds.x + bounds.width * 0.35;
+    const innerMaxX = bounds.x + bounds.width * 0.68;
+    const innerMinY = bounds.y + bounds.height * 0.48;
+    const innerMaxY = bounds.y + bounds.height * 0.72;
+    console.log('[CHICK INNER AREA]', { innerMinX, innerMaxX, innerMinY, innerMaxY });
+
+    // 4 隻雞隨機落在 inner area，4 個象限分散（不重疊、不站角落）
+    const quadrants = [
+      { minX: innerMinX, maxX: (innerMinX + innerMaxX) / 2, minY: innerMinY, maxY: (innerMinY + innerMaxY) / 2 },
+      { minX: (innerMinX + innerMaxX) / 2, maxX: innerMaxX, minY: innerMinY, maxY: (innerMinY + innerMaxY) / 2 },
+      { minX: innerMinX, maxX: (innerMinX + innerMaxX) / 2, minY: (innerMinY + innerMaxY) / 2, maxY: innerMaxY },
+      { minX: (innerMinX + innerMaxX) / 2, maxX: innerMaxX, minY: (innerMinY + innerMaxY) / 2, maxY: innerMaxY },
     ];
+    const positions = animals.slice(0, 4).map((_: any, i: number) => ({
+      x: Phaser.Math.Between(quadrants[i].minX, quadrants[i].maxX),
+      y: Phaser.Math.Between(quadrants[i].minY, quadrants[i].maxY),
+    }));
+    console.log('[CHICK SPAWN POSITIONS]', positions.map((p: any, i: number) => ({ slot: i, x: p.x, y: p.y })));
 
-    animals.slice(0, 4).forEach((animal: { id: string; type: string; stage: string }, index: number) => {
+    // 雞的活動範圍侷限在 inner bounds 內（與 spawn 一致）
+    const area = {
+      x: innerMinX,
+      y: innerMinY,
+      width: innerMaxX - innerMinX,
+      height: innerMaxY - innerMinY,
+    };
+
+    animals.slice(0, 4).forEach((animal: any, index: number) => {
       const pos = positions[index];
       if (!pos) return;
 
-      // 成雞用成年圖,小雞用小雞圖
-      const spriteKey = animal.stage === 'adult' ? 'chicken_adult' : 'chick_baby';
-      const displaySize = animal.stage === 'adult' ? 40 : 30;
+      // 從 API slots：依 state 判斷生長階段；從 localStorage：依 stage 判斷
+      let spriteKey = 'chick_baby';
+      let displaySize = 30;
+      if (slots && slots.length > 0) {
+        // API 模式：根據 growthStage / state 判斷
+        const growthStage = animal.growthStage ?? animal.stage;
+        const state = animal.state;
+        if (growthStage === 'adult' || state === 'READY_TO_FEED' || state === 'PRODUCING' || state === 'READY_TO_COLLECT') {
+          spriteKey = 'chicken_adult';
+          displaySize = 40;
+        } else {
+          spriteKey = 'chick_baby';
+          displaySize = 30;
+        }
+      } else {
+        // localStorage fallback
+        spriteKey = animal.stage === 'adult' ? 'chicken_adult' : 'chick_baby';
+        displaySize = animal.stage === 'adult' ? 40 : 30;
+      }
 
       const chick = this.add.image(pos.x, pos.y, spriteKey);
       chick.setOrigin(0.5, 1);
@@ -3084,7 +3206,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.startChickMovement(chick, area);
     });
 
-    if (DEBUG_COOP) console.log('[RENDER CHICKS IN COOP]', { count: animals.length });
+    console.log('[RENDER CHICKS IN COOP] renderedChickSprites.length:', this._chickSprites.length, 'animals count:', animals.length);
+    console.log('[INIT COOP CHICKS RENDER DONE] renderedChickSprites.length:', this._chickSprites.length);
+    if (DEBUG_COOP) console.log('[RENDER CHICKS IN COOP]', { count: animals.length, source: slots && slots.length > 0 ? 'api' : 'localStorage' });
   }
 
   // ── Phase4: 新增小雞(本地) ──

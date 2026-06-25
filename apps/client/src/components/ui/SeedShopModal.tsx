@@ -1,6 +1,8 @@
 // SeedShopModal - 種子商店（升級版：支援道具+畜牧）
 // 購買種子，扣除金幣，增加到背包
 
+console.log('[SEED SHOP MODAL VERSION] 2026-06-26-fix-check');
+
 const DEBUG = false;
 
 import { useEffect, useState } from 'react';
@@ -96,24 +98,48 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
     return unsub;
   }, []);
 
-  // 當畜牧 tab 打開時，從 localStorage 取得雞舍狀態
+  // 當畜牧 tab 打開時，從 server status API 取得雞舍狀態（統一資料源）
   useEffect(() => {
-    if (activeTab === 'livestock') {
-      // 直接讀 localStorage，不走 API
-      const raw = localStorage.getItem('tlo_farm_chicken_coop');
-      const coop = raw ? JSON.parse(raw) : null;
-      const placedCoop = !!coop && coop.type === 'chicken_coop';
-      const chickenCount = coop?.animals?.length ?? 0;
-      const maxCapacity = coop?.capacity ?? 4;
-      setChickenStatus({
-        placedCoop,
-        pendingCoop: false,
-        chickenCount,
-        maxCapacity,
-        loading: false,
+    if (activeTab !== 'livestock') return;
+
+    setChickenStatus(prev => ({ ...prev, loading: true }));
+
+    authFetch('/api/animals/chicken-coop/status')
+      .then(res => res.json())
+      .then(data => {
+        console.log('[SHOP LIVESTOCK STATUS API RESPONSE]', data);
+        if (!data.success) {
+          setChickenStatus(prev => ({ ...prev, loading: false }));
+          return;
+        }
+        // hasBuilding：server 已計算好
+        const placedCoop = !!data.hasBuilding;
+        // animalCount：slots 中非 EMPTY 的數量
+        const animalCount = (data.slots || []).filter((s: any) => s.state !== 'EMPTY').length;
+        const maxCapacity = (data.slots || []).length || 4;
+        setChickenStatus({
+          placedCoop,
+          pendingCoop: false,
+          chickenCount: animalCount,
+          maxCapacity,
+          loading: false,
+        });
+        console.log('[SHOP LIVESTOCK STATUS RENDER]', {
+          placedCoop,
+          hasBuilding: data.hasBuilding,
+          animalCount,
+          capacity: maxCapacity,
+          feedCount,
+          chickenCoopButtonDisabled: placedCoop,
+          chickButtonDisabled: !placedCoop || animalCount >= maxCapacity,
+          feedDisplayCount: feedCount,
+        });
+      })
+      .catch(err => {
+        console.error('[SHOP LIVESTOCK STATUS API ERROR]', err);
+        setChickenStatus(prev => ({ ...prev, loading: false }));
       });
-    }
-  }, [activeTab]);
+  }, [activeTab, feedCount]);
 
   const fetchShopData = async () => {
     setLoading(true);
@@ -635,6 +661,19 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
             {/* 畜牧分頁 */}
             {activeTab === 'livestock' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                {(() => {
+                  console.log('[SHOP LIVESTOCK STATUS RENDER]', {
+                    placedCoop: chickenStatus.placedCoop,
+                    hasBuilding: chickenStatus.placedCoop,
+                    animalCount: chickenStatus.chickenCount,
+                    capacity: chickenStatus.maxCapacity,
+                    feedCount,
+                    chickenCoopButtonDisabled: chickenStatus.placedCoop,
+                    chickButtonDisabled: !chickenStatus.placedCoop || chickenStatus.chickenCount >= chickenStatus.maxCapacity,
+                    feedDisplayCount: feedCount,
+                  });
+                  return null;
+                })()}
                 {chickenStatus.loading ? (
                   <div style={{ textAlign: 'center', padding: '20px', color: '#aaa' }}>載入中...</div>
                 ) : livestock.length === 0 ? (
@@ -795,22 +834,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             {levelLocked && <span style={{ fontSize: '11px', color: '#aaa', marginLeft: '6px' }}>(Lv.{item.requiredLevel} 解鎖)</span>}
                           </div>
                           <div style={{ fontSize: '12px', color: '#8B6914', marginTop: '2px' }}>{item.description}</div>
-                          {(() => {
-                            const rawCount = itemCounts[2];
-                            const state = backpackSystem.getState();
-                            const feedFromItems = (state.items ?? []).find(i => Number(i.itemId ?? i.item_id ?? i.id) === 2);
-                            const feedFromLivestock = (state.livestock ?? []).find(i => Number(i.itemId ?? i.item_id ?? i.id) === 2);
-                            console.log('[FEED DISPLAY DEBUG]', {
-                              itemCounts,
-                              rawCount,
-                              feedFromItems,
-                              feedFromLivestock,
-                              stateItems: state.items,
-                              stateLivestock: state.livestock,
-                            });
-                            const displayCount = rawCount ?? feedFromItems?.amount ?? feedFromLivestock?.amount ?? 0;
-                            return <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>持有 {displayCount} 個</div>;
-                          })()}
+                          <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>持有 {feedCount} 個</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
