@@ -226,6 +226,7 @@ export default function GamePage() {
         setTimeout(() => setPlayerToast(''), 2000);
       });
       scene.events.on('game-toast', (message: string) => {
+        console.log('[GAMEPAGE TOAST RECEIVED from scene.events]', message);
         setPlayerToast(message);
         setTimeout(() => setPlayerToast(''), 2500);
       });
@@ -233,6 +234,8 @@ export default function GamePage() {
       // backup listener：window.dispatchEvent 的 game-toast
       const handleWindowToast = (e: Event) => {
         const message = (e as CustomEvent).detail?.message || (e as any).message;
+        console.log('[GAMEPAGE TOAST RECEIVED from window]', message);
+        console.log('[GAMEPAGE PLAYER TOAST SET]', message);
         setPlayerToast(message);
         setTimeout(() => setPlayerToast(''), 2500);
       };
@@ -535,6 +538,28 @@ export default function GamePage() {
           margin-top: -4px !important;
         }
       `}</style>
+
+      {/* Toast — 全域提示，置於最上層 */}
+      {playerToast && (
+        <div style={{
+          position: 'fixed',
+          top: '90px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#FFD700',
+          padding: '10px 24px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: 700,
+          zIndex: 99999,
+          pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+        }}>
+          ✓ {playerToast}
+        </div>
+      )}
+
     <div className="game-root">
 
       {/* 頂部狀態列 */}
@@ -737,12 +762,7 @@ export default function GamePage() {
               <button onClick={()=>setShowPlayerProfile(false)} style={{position:'absolute',right:0,top:'-2px',background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'#5A3418',padding:0,lineHeight:1}}>✕</button>
             </div>
 
-            {/* Toast */}
-            {playerToast && (
-              <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'rgba(0,0,0,0.8)',color:'#FFD700',padding:'10px 20px',borderRadius:'8px',fontSize:'14px',fontWeight:700,zIndex:2000,pointerEvents:'none'}}>
-                ✓ {playerToast}
-              </div>
-            )}
+
 
             {/* 玩家名片區 */}
             <div style={{background:'#F4E6C7',border:'3px solid #4A2D16',borderRadius:'8px',padding:'14px',marginBottom:'10px',display:'flex',gap:'14px',alignItems:'flex-start'}}>
