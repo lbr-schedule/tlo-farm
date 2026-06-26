@@ -220,6 +220,13 @@ class BackpackSystem {
     const res = await authFetch(`/api/inventory?type=${type}&page=${page}&limit=${limit}`);
     const data = await res.json();
         if (!data.success) throw new Error(data.message || '取得背包失敗');
+        console.log('[BACKPACK SEED RAW SERVER]', { type, items: data.inventory });
+    // 種子只回傳 amount > 0 的項目
+    if (type === 'seed') {
+      const filtered = (data.inventory || []).filter((item: any) => item.amount > 0);
+      console.log('[BACKPACK SEED FINAL STATE]', { filtered });
+      return filtered;
+    }
     return data.inventory || [];
   }
 

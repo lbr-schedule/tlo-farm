@@ -10,13 +10,13 @@ const DEBUG = false;
 // ============================================================
 
 // ── 種子圖示（itemId → icon 路徑）─────────────────────────
-// crops table: id 1=小麥, 2=玉米, 3=紅蘿蔔, 4=馬鈴薯, 5=西瓜, 6=南瓜, 7=胡蘿蔔, 8=藍莓
+// crops table: id 1=小麥, 2=玉米, 3=紅蘿蔔, 4=馬鈴薯, 5=甘蔗, 6+=預留
 export const seedIconById: Record<number, string> = {
   1: '/assets/icon/cropped/icon_seed_wheat.png',
   2: '/assets/icon/cropped/icon_seed_corn.png',
   3: '/assets/icon/cropped/icon_seed_carrot.png',
   4: '/assets/icon/cropped/icon_seed_potato.png',
-  5: '/assets/icon/cropped/icon_seed.png',   // 西瓜 (無專用)
+  5: '/assets/crops/甘蔗種子.png',   // 甘蔗
   6: '/assets/icon/cropped/icon_seed.png',  // 南瓜 (無專用)
   7: '/assets/icon/cropped/icon_seed.png',  // 胡蘿蔔 (無專用)
   8: '/assets/icon/cropped/icon_seed.png',  // 藍莓 (無專用)
