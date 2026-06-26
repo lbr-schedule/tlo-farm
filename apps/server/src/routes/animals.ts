@@ -251,7 +251,7 @@ router.get('/chicken-coop/status', async (req: AuthRequest, res: Response) => {
 
     return res.json({
       success: true,
-      hasBuilding: !!(building && (building.tileX != null && building.tileX !== 0)),
+      hasBuilding: !!(building && building.tileX != null && building.tileY != null),
       tileX: building?.tileX ?? null,
       tileY: building?.tileY ?? null,
       slots,
@@ -276,7 +276,7 @@ router.post('/chicken-coop/buy', async (req: AuthRequest, res: Response) => {
       `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`, [userId]
     );
     const building = buildingRows.rows[0];
-    if (!building || building.tileX == null || building.tileX === 0) {
+    if (!building || building.tileX == null || building.tileY == null) {
       return res.status(400).json({ success: false, message: '請先放置雞舍！' });
     }
 
