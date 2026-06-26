@@ -1857,9 +1857,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           this.events.emit('game-toast', data.message || '施肥失敗');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[FarmScene] 施肥錯誤', err);
-      this.events.emit('game-toast', '施肥失敗，請稍後再試');
+      // 尝试从错误中提取 server 返回的 message
+      let msg = '施肥失敗，請稍後再試';
+      if (err?.message) msg = err.message;
+      else if (err?.body?.message) msg = err.body.message;
+      else if (typeof err === 'string') msg = err;
+      this.events.emit('game-toast', msg);
     }
   }
 
