@@ -736,6 +736,19 @@ export default function GamePage() {
         />
       )}
 
+      {/* DEV：再次觸發升級彈窗（完成後移除） */}
+      <button
+        onClick={() => {
+          setPendingLevelUp(displayUser?.level ?? 6);
+          setPendingLevelUnlocks(displayUser?.level === 8
+            ? ['甘蔗種子', '農地可擴充 12 → 14', '花盆裝飾']
+            : []);
+        }}
+        style={{ position: 'fixed', bottom: 80, right: 16, zIndex: 9999, background: '#ff6b00', color: '#fff', border: '2px solid #fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }}
+      >
+        [DEV] 升級彈窗
+      </button>
+
       {/* 彈窗：升級提示 */}
       {pendingLevelUp !== null && (
         <LevelUpModal newLevel={pendingLevelUp} onClose={() => {
