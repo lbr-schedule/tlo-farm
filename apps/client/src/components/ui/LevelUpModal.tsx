@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface LevelUpModalProps {
   newLevel: number;
@@ -7,21 +7,15 @@ interface LevelUpModalProps {
 }
 
 export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelUpModalProps) {
-  const [visible, setVisible] = useState(true);
+  const [closing, setClosing] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setVisible(false);
-      setTimeout(onClose, 300);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  if (!visible) return null;
+  const handleClose = () => {
+    setClosing(true);
+    setTimeout(onClose, 300);
+  };
 
   return (
     <div
-      onClick={() => { setVisible(false); setTimeout(onClose, 300); }}
       style={{
         position: 'fixed',
         top: 0,
@@ -34,7 +28,6 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
         justifyContent: 'center',
         zIndex: 2000,
         fontFamily: "'Cubic 11', sans-serif",
-        cursor: 'pointer',
       }}
     >
       <div style={{
@@ -44,9 +37,33 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
         boxShadow: '6px 6px 0 #3d2518, inset 0 0 0 4px #3d2518',
         padding: '30px 40px',
         textAlign: 'center',
-        animation: 'levelUpPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        animation: closing ? 'levelUpPopOut 0.3s ease-in forwards' : 'levelUpPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
         maxWidth: '90vw',
+        position: 'relative',
+        opacity: closing ? 0 : 1,
+        transition: 'opacity 0.3s',
       }}>
+
+        {/* X 關閉按鈕 */}
+        <button
+          onClick={handleClose}
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '12px',
+            background: 'none',
+            border: 'none',
+            color: '#F5D76E',
+            fontSize: '24px',
+            cursor: 'pointer',
+            lineHeight: 1,
+            padding: '4px 8px',
+            fontWeight: 'bold',
+          }}
+        >
+          ✕
+        </button>
+
         {/* 星星裝飾 */}
         <div style={{ fontSize: '48px', marginBottom: '10px', animation: 'starSpin 1s ease-in-out infinite' }}>
           ⭐⭐⭐
@@ -60,7 +77,7 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
           textShadow: '3px 3px 0 #8B5A2B',
           marginBottom: '10px',
         }}>
-          等級提升！
+          恭喜升級至 Lv{newLevel}！
         </div>
 
         {/* 等級數字 */}
@@ -70,7 +87,7 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
           color: '#fff',
           textShadow: '4px 4px 0 #F5D76E',
           animation: 'levelPulse 0.8s ease-in-out infinite alternate',
-          marginBottom: '10px',
+          marginBottom: '20px',
         }}>
           Lv.{newLevel}
         </div>
@@ -79,26 +96,46 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
         <div style={{
           color: '#d4c4a8',
           fontSize: '15px',
-          marginBottom: '20px',
+          marginBottom: '24px',
           minHeight: '24px',
         }}>
-          {unlocks.length === 0
-            ? '目前沒有新解鎖內容，繼續努力！'
-            : <div>
-                <div style={{ marginBottom: '8px' }}>已解鎖：</div>
-                {unlocks.map((item, i) => (
-                  <div key={i} style={{ fontSize: '14px', marginBottom: '4px' }}>\u2022 {item}</div>
-                ))}
-              </div>}
+          {unlocks.length === 0 ? (
+            <div style={{ lineHeight: 1.6 }}>
+              目前沒有新的解鎖內容。
+              <br />
+              繼續努力經營農場，
+              <br />
+              下一級將解鎖更多內容！
+            </div>
+          ) : (
+            <div>
+              <div style={{ marginBottom: '10px', color: '#F5D76E', fontSize: '16px' }}>已解鎖：</div>
+              {unlocks.map((item, i) => (
+                <div key={i} style={{ fontSize: '15px', marginBottom: '6px', color: '#d4c4a8' }}>
+                  • {item}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 點擊關閉提示 */}
-        <div style={{
-          color: '#8B6914',
-          fontSize: '13px',
-        }}>
-          點擊任意處關閉
-        </div>
+        {/* 確定按鈕 */}
+        <button
+          onClick={handleClose}
+          style={{
+            background: '#F5D76E',
+            border: '3px solid #8B5A2B',
+            borderRadius: '4px',
+            color: '#5C3D2E',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            padding: '10px 40px',
+            cursor: 'pointer',
+            boxShadow: '3px 3px 0 #8B5A2B',
+          }}
+        >
+          【確定】
+        </button>
       </div>
 
       <style>{`
@@ -106,6 +143,10 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
           0% { transform: scale(0.3); opacity: 0; }
           50% { transform: scale(1.1); }
           100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes levelUpPopOut {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(0.8); opacity: 0; }
         }
         @keyframes levelPulse {
           from { transform: scale(1); }
