@@ -330,6 +330,16 @@ export default function GamePage() {
     <>
       <style>{`
         /* 主畫面 - 全頁草地背景 */
+        /* Toast 淡入動畫 */
+        @keyframes toastFadeIn {
+          from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes toastFadeOut {
+          from { opacity: 1; }
+          to   { opacity: 0; }
+        }
+
         .game-root {
           width: 100vw;
           height: 100vh;
@@ -546,17 +556,20 @@ export default function GamePage() {
           top: '90px',
           left: '50%',
           transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.85)',
-          color: '#FFD700',
-          padding: '10px 24px',
-          borderRadius: '8px',
+          background: 'rgba(45, 30, 15, 0.80)',
+          color: '#FFF8D6',
+          padding: '10px 18px',
+          borderRadius: '9px',
           fontSize: '14px',
           fontWeight: 700,
           zIndex: 99999,
           pointerEvents: 'none',
           whiteSpace: 'nowrap',
+          border: '2px solid rgba(255, 220, 120, 0.45)',
+          boxShadow: '0 6px 18px rgba(0, 0, 0, 0.35)',
+          animation: 'toastFadeIn 0.2s ease-out',
         }}>
-          ✓ {playerToast}
+          {playerToast}
         </div>
       )}
 
