@@ -99,12 +99,44 @@ export default function GamePage() {
   const [sigInput, setSigInput] = useState('');
   const [displayUser, setDisplayUser] = useState(user);
   const [pendingLevelUp, setPendingLevelUp] = useState<number | null>(null);
+  const [pendingLevelUnlocks, setPendingLevelUnlocks] = useState<string[]>([]);
   const lastShownLevelRef = useRef<number | null>(null);
   const loginTaskMarkedRef = useRef(false);
 
   useEffect(() => {
     if (user) setDisplayUser(user);
   }, [user]);
+
+  // ── 升級時 fetch 解鎖內容 ──
+  useEffect(() => {
+    if (pendingLevelUp === null) return;
+    fetch('/api/game/level-unlocks')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) return;
+        const lvl = pendingLevelUp;
+        const unlockLines: string[] = [];
+
+        // 作物解鎖：該等级解鎖但前一等级未解鎖的作物
+        const prevLvl = lvl - 1;
+        const newCrops = (data.crops as any[])
+          .filter((c: any) => c.requiredLevel === lvl && (prevLvl <= 0 || (data.crops as any[]).filter((p: any) => p.id === c.id && p.requiredLevel <= prevLvl).length === 0))
+          .map((c: any) => c.name);
+
+        // 建築/物品解鎖（LEVEL_UNLOCKS 靜態設定）
+        const config = data.levelConfig?.[lvl];
+        if (config) {
+          unlockLines.push(...config.crops.map((n: string) => n));
+          unlockLines.push(...config.buildings.map((n: string) => n));
+          unlockLines.push(...config.items.map((n: string) => n));
+        }
+
+        // 合併並去除重複
+        const all = [...newCrops, ...unlockLines];
+        setPendingLevelUnlocks(all.length > 0 ? all : []);
+      })
+      .catch(() => setPendingLevelUnlocks([]));
+  }, [pendingLevelUp]);
 
   // ── 監聽畜牧狀態更新（雞舍放置成功後同步金幣）──
   useEffect(() => {
@@ -716,7 +748,8 @@ export default function GamePage() {
             if (scene) scene.events.emit('workshopUnlocked');
           }
           setPendingLevelUp(null);
-        }} unlocks={pendingLevelUp >= 10 ? ['workshop'] : []} />
+          setPendingLevelUnlocks([]);
+        }} unlocks={pendingLevelUnlocks} />
       )}
 
       {/* 彈窗：訂單 */}

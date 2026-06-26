@@ -80,12 +80,16 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
           color: '#d4c4a8',
           fontSize: '15px',
           marginBottom: '20px',
+          minHeight: '24px',
         }}>
-          {newLevel >= 10 && unlocks.includes('workshop')
-            ? '🏭 食品工坊已解鎖！前往商店購買吧！'
-            : newLevel >= 8
-            ? '🌾 可以購買新的作物種子了！'
-            : '可以購買新的作物種子了！'}
+          {unlocks.length === 0
+            ? '目前沒有新解鎖內容，繼續努力！'
+            : <div>
+                <div style={{ marginBottom: '8px' }}>已解鎖：</div>
+                {unlocks.map((item, i) => (
+                  <div key={i} style={{ fontSize: '14px', marginBottom: '4px' }}>\u2022 {item}</div>
+                ))}
+              </div>}
         </div>
 
         {/* 點擊關閉提示 */}

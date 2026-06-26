@@ -13,6 +13,7 @@ import playerRouter from './routes/player';
 import eventsRouter from './routes/events';
 import animalsRouter from './routes/animals';
 import workshopRouter from './routes/workshop';
+import gameRouter from './routes/game';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -60,6 +61,9 @@ app.use('/api/player', authMiddleware, playerRouter);
 app.use('/api/events', authMiddleware, eventsRouter);
 app.use('/api/animals', authMiddleware, animalsRouter);
 app.use('/api/workshop', authMiddleware, workshopRouter);
+
+// 遊戲通用資料路由
+app.use('/api/game', gameRouter);
 
 // Serve client static files in production
 if (process.env.NODE_ENV === 'production') {
