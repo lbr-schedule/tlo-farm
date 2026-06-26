@@ -3157,7 +3157,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           });
           return;
         }
-        // 遞減顯示
+        // 遞減顯示（不要重新查 getCoopMinRemainingSec，否則 slot 未更新時會回 null 蓋掉顯示值）
         if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining > 0) {
           this._coopCountdownRemaining--;
           console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining });

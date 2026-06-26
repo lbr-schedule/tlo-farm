@@ -3,7 +3,7 @@ import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
 const CHICKEN_BABY_GROW_TIME = 60;   // seconds
-const CHICKEN_PRODUCTION_TIME = 120; // seconds
+const CHICKEN_PRODUCTION_TIME = 900; // seconds
 const CHICKEN_BUY_PRICE = 50;        // gold
 const COOP_PRICE = 500;              // gold
 const CHICK_FEED_ITEM_ID = 2;        // feed_normal items.id
