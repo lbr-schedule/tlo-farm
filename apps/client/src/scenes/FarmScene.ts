@@ -2767,6 +2767,16 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 循環制:檢查雞舍計時器(面板內倒數 + 到期處理)──
   private _coopCountdownInterval: number | null = null;
+  // 雞舍倒計時顯示用（避免 scope 問題）
+  private _coopCountdownRemaining: number | null = null;
+
+  // ── 取得當前 PRODUCING slot 的最短 remainingSec ──
+  private getCoopMinRemainingSec(): number | null {
+    const slots = this.coopChickenStatus?.slots ?? [];
+    const producingSlots = slots.filter((s: any) => s.state === 'PRODUCING' && typeof s.remainingSec === 'number');
+    if (producingSlots.length === 0) return null;
+    return Math.max(0, Math.min(...producingSlots.map((s: any) => s.remainingSec as number)));
+  }
   private _coopListenersInitialized: boolean = false;
   // 用於存 panel DOM 引用，讓 class method 也能呼叫 re-binding
   private _coopPanelEl: HTMLDivElement | null = null;
@@ -2939,6 +2949,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         clearInterval(this._coopCountdownInterval);
         this._coopCountdownInterval = null;
       }
+      this._coopCountdownRemaining = null;
       this._coopListenersInitialized = false;
       return;
     }
@@ -2951,10 +2962,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
       const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
       const hasProducing = slots.some((s: any) => s.state === 'PRODUCING');
-      const producingSlots = slots.filter((s: any) => s.state === 'PRODUCING');
-      const minRemainingSec = producingSlots.length > 0
-        ? Math.min(...producingSlots.map((s: any) => s.remainingSec ?? 0))
-        : null;
+      const minRemainingSec = this.getCoopMinRemainingSec();
       const canFeed = hasReadyToFeed && animalCount > 0;
       const feedBtnLabel = !hasReadyToFeed && hasReadyToCollect ? '請先收蛋' : (animalCount === 0 ? '無雞' : '餵食');
       const canCollect = collectableEggs > 0;
@@ -3129,37 +3137,34 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const ADULT_EGG_MS = 15 * 60 * 1000;
 
     // ── 倒計時顯示：用 server remainingSec，不自己算時間──
-    let displayRemainingSec: number | null = minRemainingSec;
-    console.log('[COOP TIMER INIT]', { remainingSec: displayRemainingSec });
+    this._coopCountdownRemaining = this.getCoopMinRemainingSec();
+    console.log('[COOP TIMER INIT]', { remainingSec: this._coopCountdownRemaining });
+    // 供 initPanel closure 使用
+    const minRemainingSec = this._coopCountdownRemaining;
 
     const processCoopTimer = () => {
       try {
-        const slots = this.coopChickenStatus?.slots ?? [];
-        const producingSlots = slots.filter((s: any) => s.state === 'PRODUCING');
-        const minSec = producingSlots.length > 0
-          ? Math.min(...producingSlots.map((s: any) => s.remainingSec ?? 0))
-          : null;
         // 到 0 了：server 會更新狀態為 READY_TO_COLLECT
-        if (displayRemainingSec !== null && displayRemainingSec <= 1) {
-          console.log('[COOP TIMER DONE SYNC]', { previousRemaining: displayRemainingSec });
+        if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining <= 1) {
+          console.log('[COOP TIMER DONE SYNC]', { previousRemaining: this._coopCountdownRemaining });
+          this._coopCountdownRemaining = null;
+          if (this._coopCountdownInterval !== null) {
+            clearInterval(this._coopCountdownInterval);
+            this._coopCountdownInterval = null;
+          }
           this.syncChickenCoopStatus().then(() => {
             this.refreshCoopPanelStatus(panel);
           });
-          displayRemainingSec = null;
           return;
         }
-        if (minSec !== null && minSec > 0) {
-          displayRemainingSec = minSec;
-        }
-        // 只遞減顯示用的計時器
-        if (displayRemainingSec !== null && displayRemainingSec > 0) {
-          displayRemainingSec--;
-          console.log('[COOP TIMER TICK]', { remainingSec: displayRemainingSec });
-          // 更新 countdownHtml 的顯示（不重建整個面板）
+        // 遞減顯示
+        if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining > 0) {
+          this._coopCountdownRemaining--;
+          console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining });
           const countdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
           if (countdownEl) {
-            const mins = Math.floor(displayRemainingSec / 60);
-            const secs = displayRemainingSec % 60;
+            const mins = Math.floor(this._coopCountdownRemaining / 60);
+            const secs = this._coopCountdownRemaining % 60;
             countdownEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
           }
         }
@@ -3167,6 +3172,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     };
 
     const startCountdownLoop = () => {
+      if (this._coopCountdownRemaining === null) return; // 沒有 PRODUCING slot 不啟動
       this._coopCountdownInterval = window.setInterval(() => {
         processCoopTimer();
       }, 1000);
@@ -3405,6 +3411,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       clearInterval(this._coopCountdownInterval);
       this._coopCountdownInterval = null;
     }
+    this._coopCountdownRemaining = null;
     this._coopListenersInitialized = false;
     if (this._coopPanelEl) {
       this._coopPanelEl.remove();
