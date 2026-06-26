@@ -826,7 +826,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 60, height: 60, marginTop: '2px', objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
+                          <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 60, height: 60, marginTop: '6px', objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
                         </div>
                         <div>
                           <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>
