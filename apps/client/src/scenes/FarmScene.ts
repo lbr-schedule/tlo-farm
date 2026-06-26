@@ -3138,7 +3138,13 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // ── 倒計時顯示：用 server remainingSec，不自己算時間──
     this._coopCountdownRemaining = this.getCoopMinRemainingSec();
-    console.log('[COOP TIMER INIT]', { remainingSec: this._coopCountdownRemaining });
+    // 確認計時 DOM 元素存在後才啟動
+    const initCountdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
+    console.log('[COOP TIMER INIT]', {
+      remainingSec: this._coopCountdownRemaining,
+      countdownElExists: !!initCountdownEl,
+      panelInDoc: document.body.contains(panel),
+    });
     // 供 initPanel closure 使用
     const minRemainingSec = this._coopCountdownRemaining;
 
@@ -3157,15 +3163,21 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           });
           return;
         }
-        // 遞減顯示（不要重新查 getCoopMinRemainingSec，否則 slot 未更新時會回 null 蓋掉顯示值）
+        // 遞減顯示（每次 tick 都重新查 DOM，避免 refreshCoopPanelStatus 重建後抓到已銷毀的舊元素）
         if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining > 0) {
           this._coopCountdownRemaining--;
-          console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining });
-          const countdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
-          if (countdownEl) {
+          const tickCountdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
+          const textBefore = tickCountdownEl?.textContent ?? 'NOT FOUND';
+          if (tickCountdownEl) {
             const mins = Math.floor(this._coopCountdownRemaining / 60);
             const secs = this._coopCountdownRemaining % 60;
-            countdownEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            tickCountdownEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining, textBefore, textAfter: tickCountdownEl.textContent });
+          } else {
+            console.warn('[COOP TIMER DOM MISSING]', {
+              panelInDoc: document.body.contains(panel),
+              textBefore,
+            });
           }
         }
       } catch(e) {}
