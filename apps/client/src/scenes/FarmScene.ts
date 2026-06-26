@@ -1848,31 +1848,18 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         }
         this.showFertilizeSuccess(index);
       } else {
-        // 顯示錯誤
-        const errText = this.add.text(0, -this.FARM_SIZE / 2 - 30, data.message || '施肥失敗', {
-          fontSize: '12px',
-          fontFamily: "'Cubic 11', sans-serif",
-          color: '#FF8888',
-          fontStyle: 'bold',
-        });
-        errText.setOrigin(0.5, 1);
-        errText.setDepth(80);
-        container.add(errText);
-        this.time.delayedCall(1500, () => errText.destroy());
+        fertilizerText.destroy();
+        // 顯示錯誤 — 使用 game-toast 系統
+        const msg = data.message || '';
+        if (msg.includes('肥料不足') || msg.includes('沒有足夠的肥料')) {
+          this.events.emit('game-toast', '肥料不足，請先購買普通肥料');
+        } else {
+          this.events.emit('game-toast', data.message || '施肥失敗');
+        }
       }
     } catch (err) {
       console.error('[FarmScene] 施肥錯誤', err);
-      fertilizerText.destroy();
-      const errText = this.add.text(0, -this.FARM_SIZE / 2 - 30, '網路錯誤', {
-        fontSize: '12px',
-        fontFamily: "'Cubic 11', sans-serif",
-        color: '#FF8888',
-        fontStyle: 'bold',
-      });
-      errText.setOrigin(0.5, 1);
-      errText.setDepth(80);
-      container.add(errText);
-      this.time.delayedCall(1500, () => errText.destroy());
+      this.events.emit('game-toast', '施肥失敗，請稍後再試');
     }
   }
 
@@ -2716,7 +2703,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       console.log('[FEED API RESPONSE]', result);
       if (!result.success) {
         console.warn('[FEED-ALL API FAIL]', result);
-        if (result.message) this.events.emit('game-toast', result.message);
+        const msg = result.message || '';
+        if (msg.includes('飼料不足') || msg.includes('沒有足夠的普通飼料') || msg.includes('feed not enough')) {
+          this.events.emit('game-toast', '飼料不足，請先購買普通飼料');
+        } else if (result.message) {
+          this.events.emit('game-toast', result.message);
+        } else {
+          this.events.emit('game-toast', '餵食失敗，請稍後再試');
+        }
         return;
       }
       // 成功：同步狀態
