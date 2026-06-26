@@ -608,8 +608,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{
-                          width: '56px',
-                          height: '56px',
+                          width: '64px',
+                          height: '64px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -619,8 +619,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             src={getItemIcon(item.sprite)}
                             alt={item.nameZhTw}
                             style={{
-                              width: item.sprite === '普通肥料.png' ? 56 : 56,
-                              height: item.sprite === '普通肥料.png' ? 56 : 56,
+                              width: 64,
+                              height: 64,
                               objectFit: 'contain',
                               imageRendering: 'pixelated',
                               display: 'block',
@@ -716,8 +716,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                         opacity: levelLocked ? 0.6 : 1,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 52, height: 52, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
+                          <div style={{ width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 60, height: 60, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
                           </div>
                           <div>
                             <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>
@@ -780,8 +780,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                         opacity: levelLocked ? 0.6 : 1,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 52, height: 52, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
+                          <div style={{ width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 60, height: 60, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
                           </div>
                           <div>
                             <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>
@@ -825,8 +825,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                       opacity: levelLocked ? 0.6 : 1,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 52, height: 52, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
+                        <div style={{ width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <img src={getLivestockIcon(item)} alt={item.nameZhTw} style={{ width: 60, height: 60, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }} />
                         </div>
                         <div>
                           <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#3d2518' }}>
