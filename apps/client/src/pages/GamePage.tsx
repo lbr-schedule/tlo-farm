@@ -229,6 +229,14 @@ export default function GamePage() {
         setPlayerToast(message);
         setTimeout(() => setPlayerToast(''), 2500);
       });
+
+      // backup listener：window.dispatchEvent 的 game-toast
+      const handleWindowToast = (e: Event) => {
+        const message = (e as CustomEvent).detail?.message || (e as any).message;
+        setPlayerToast(message);
+        setTimeout(() => setPlayerToast(''), 2500);
+      };
+      window.addEventListener('game-toast', handleWindowToast);
     };
     setTimeout(tryRegister, 50);
 

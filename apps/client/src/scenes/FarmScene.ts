@@ -1854,9 +1854,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           ? '肥料不足，請先購買普通肥料'
           : (data.message || '施肥失敗');
         console.log('[FERTILIZE ERROR MESSAGE]', toastMsg);
-        console.log('[TOAST METHOD USED]', 'events.emit(game-toast)');
+        console.log('[TOAST METHOD USED]', 'window.dispatchEvent(CustomEvent)');
         console.log('[TOAST DISPATCHED]', toastMsg);
-        this.events.emit('game-toast', toastMsg);
+        window.dispatchEvent(new CustomEvent('game-toast', { detail: { message: toastMsg } }));
       }
     } catch (err: any) {
       console.error('[FarmScene] 施肥錯誤', err);
@@ -1865,9 +1865,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       else if (err?.body?.message) msg = err.body.message;
       else if (typeof err === 'string') msg = err;
       console.log('[FERTILIZE ERROR MESSAGE]', msg);
-      console.log('[TOAST METHOD USED]', 'events.emit(game-toast)');
+      console.log('[TOAST METHOD USED]', 'window.dispatchEvent(CustomEvent)');
       console.log('[TOAST DISPATCHED]', msg);
-      this.events.emit('game-toast', msg);
+      window.dispatchEvent(new CustomEvent('game-toast', { detail: { message: msg } }));
     }
   }
 
