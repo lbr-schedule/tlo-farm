@@ -1563,6 +1563,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           gold: data.harvest.goldEarned,
           exp: data.harvest.expEarned,
           cropName: data.harvest.cropName,
+          harvestYield: data.harvest.harvestYield,
         });
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);

@@ -451,9 +451,10 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       });
 
       const cropRows = await db.execute(
-        `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice, exp FROM crops WHERE id = ?`, [tile.cropId]
+        `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice, exp, harvest_yield as harvestYield FROM crops WHERE id = ?`, [tile.cropId]
       );
       const crop = cropRows.rows[0];
+      console.log('[HARVEST YIELD CONFIG]', { cropId: crop.id, cropName: crop.nameZhTw, harvestYield: crop.harvestYield });
       if (!crop) {
         throw { status: 404, message: '作物資料不存在' };
       }
@@ -495,14 +496,18 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       const existingInv = invRows.rows[0];
 
       if (existingInv) {
+        const beforeAmount = existingInv.amount;
         await db.execute(
-          `UPDATE inventories SET amount = amount + 1 WHERE id = ?`, [existingInv.id]
+          `UPDATE inventories SET amount = amount + ? WHERE id = ?`,
+          [crop.harvestYield, existingInv.id]
         );
+        console.log('[HARVEST INVENTORY UPSERT]', { userId, itemType: 'crop', itemId: crop.id, beforeAmount, addedAmount: crop.harvestYield });
       } else {
         await db.execute(
-          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, 1)`,
-          [userId, crop.id]
+          `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, ?)`,
+          [userId, crop.id, crop.harvestYield]
         );
+        console.log('[HARVEST INVENTORY INSERT]', { userId, itemType: 'crop', itemId: crop.id, amount: crop.harvestYield });
       }
 
       const updatedRows = await db.execute(
@@ -516,10 +521,11 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
 
       return {
         success: true,
-        message: `收成成功！獲得 ${crop.exp} 經驗！`,
+        message: `收成成功！${crop.nameZhTw} +${crop.harvestYield}！獲得 ${crop.exp} 經驗！`,
         harvest: {
           cropId: crop.id,
           cropName: crop.nameZhTw,
+          harvestYield: crop.harvestYield,
           goldEarned: 0,
           expEarned: crop.exp
         },

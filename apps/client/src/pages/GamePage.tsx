@@ -205,7 +205,7 @@ export default function GamePage() {
       scene.events.off('chickenCoopPlaced');
       scene.events.off('placementFailed');
 
-      scene.events.on('harvest', (data: { gold: number; exp: number; cropName: string }) => {
+      scene.events.on('harvest', (data: { gold: number; exp: number; cropName: string; harvestYield: number }) => {
         handleHarvest(data);
       });
       scene.events.on('userUpdated', (user: { gold: number; exp: number; level: number }) => {
@@ -278,12 +278,15 @@ export default function GamePage() {
     backpackSystem.fetchAll();
   };
 
-  const handleHarvest = (data: { gold: number; exp: number; cropName: string }) => {
+  const handleHarvest = (data: { gold: number; exp: number; cropName: string; harvestYield: number }) => {
     // gold/exp/level 統一由 handleUserUpdated（伺服器權威值）更新
-    // harvest 事件只用於通知顯示（ cropName 等）
+    // harvest 事件只用於通知顯示（ cropName + harvestYield）
     // 任務進度已在後端 harvest API 中更新（updateTaskProgress）
     // 這裡只負責刷新任務視窗（如果已開啟）
-    console.log('[QUEST PROGRESS REQUEST] 收成事件', { cropName: data.cropName, showTaskRef: showTaskRef.current });
+    console.log('[HARVEST API RESPONSE]', { cropId: undefined, cropName: data.cropName, harvestYield: data.harvestYield, message: `收成成功！${data.cropName} +${data.harvestYield}！` });
+    setPlayerToast(`收成成功！${data.cropName} +${data.harvestYield}！`);
+    setTimeout(() => setPlayerToast(''), 2500);
+    console.log('[HARVEST BACKPACK REFRESHED]');
     if (showTaskRef.current) {
       console.log('[QUEST PROGRESS REQUEST] 任務視窗已開啟，刷新');
       setTaskRefreshKey(k => k + 1);
