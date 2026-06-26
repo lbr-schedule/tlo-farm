@@ -866,6 +866,7 @@ function getSeedIcon(name: string) {
     '玉米': '/assets/icon/cropped/icon_seed_corn.png',
     '紅蘿蔔': '/assets/icon/cropped/icon_seed_carrot.png',
     '馬鈴薯': '/assets/icon/cropped/icon_seed_potato.png',
+    '甘蔗': '/assets/crops/甘蔗種子.png',
   };
   return seedMap[name] || '/assets/icon/cropped/icon_seed.png';
 }
