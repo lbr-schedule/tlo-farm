@@ -1402,7 +1402,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
   // 收成飄字(使用統一座標系統 getTileCenter)
   // ============================================================
-  private showHarvestFloatingText(index: number, cropName: string, expEarned: number) {
+  private showHarvestFloatingText(index: number, cropName: string, harvestYield: number, expEarned: number) {
     const container = this.tiles.get(`${index}`);
     if (!container) return;
 
@@ -1416,7 +1416,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const floatContainer = this.add.container(worldX, worldY);
     floatContainer.setDepth(300);
 
-    const cropText = this.add.text(0, 0, `+1 ${cropName}`, {
+    const cropText = this.add.text(0, 0, `${cropName} +${harvestYield}`, {
       fontSize: '16px',
       fontFamily: "'Cubic 11', sans-serif",
       color: '#88cc00',
@@ -1515,8 +1515,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const cropName = cropInfo?.nameZhTw ?? '作物';
     const expReward = cropInfo?.exp ?? 1;
 
-    // ── 立即顯示飄字(不等 API)──
-    this.showHarvestFloatingText(index, cropName, expReward);
+    // ── 飄字改在 API 回傳後顯示（攜帶正確 harvestYield）──
 
     // ── Optimistic Update:立即清除 UI ──
     this.clearAllPopups();
@@ -1556,7 +1555,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       if (data.success) {
         // 刷新背包(收成作物進背包)
         backpackSystem.fetchAll();
-        // 飄字已在 API 呼叫前第一時間顯示(從快取拿資料)
         // userUpdated 包含 gold/exp/level,harvest 包含 cropName 和 earned 值
         this.events.emit('userUpdated', data.user);
         this.events.emit('harvest', {
@@ -1565,6 +1563,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           cropName: data.harvest.cropName,
           harvestYield: data.harvest.harvestYield,
         });
+        // ── API 回傳後顯示飄字（帶正確 harvestYield）──
+        this.showHarvestFloatingText(index, data.harvest.cropName, data.harvest.harvestYield, expReward);
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);
         // API 失敗:重新讀取農場狀態
