@@ -2688,77 +2688,50 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 餵食按鈕 handler ──
   private async handleFeedChickenCoop(panelEl: HTMLDivElement) {
-    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-    const coop = JSON.parse(coopRaw);
-    const animalCount = (coop.animals ?? []).length;
-    const requiredFeed = animalCount;
-    if (coop.feedingStatus === 'fed') { this.events.emit('game-toast', '已餵食,請等待倒數完成'); return; }
-    if (animalCount <= 0) { this.events.emit('game-toast', '雞舍裡沒有雞'); return; }
-
-    const LIVESTOCK_KEY = 'tlo_farm_inventory_livestock';
-    const stored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
-    const state = backpackSystem.getState();
-    const itemsState = state.items;
-
-    // （fields already validated via isBasicFeed check above）
-
-    const getItemDisplayName = (item: any) =>
-      String(item.nameZhTw ?? item.itemName ?? item.displayName ?? item.name ?? item.title ?? '');
-    const getItemKey = (item: any) =>
-      String(item.itemId ?? item.key ?? item.id ?? '');
-    const getItemQuantity = (item: any) =>
-      Number(item.quantity ?? item.count ?? item.amount ?? 0);
-    const isBasicFeed = (item: any) => {
-      const name = getItemDisplayName(item);
-      const key = getItemKey(item);
-      return key === 'feed_basic' || key === 'basic_feed' || key === 'normal_feed' ||
-        key === '普通飼料' || name === '普通飼料' || name.includes('普通飼料');
-    };
-
-    const feedFromLivestock = stored.find(isBasicFeed);
-    const feedFromItems = itemsState.find(isBasicFeed);
-    const feedItem = feedFromLivestock ?? feedFromItems;
-
-    if (!feedItem) {
-      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 0 包`);
+    console.log('[FEED BUTTON CLICKED]');
+    // 用 API slots 確認是否有雞可以餵
+    const slots = this.coopChickenStatus?.slots ?? [];
+    const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
+    const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
+    if (!hasReadyToFeed) {
+      if (hasReadyToCollect) {
+        this.events.emit('game-toast', '請先收蛋！');
+      } else {
+        this.events.emit('game-toast', '沒有雞需要餵食');
+      }
       return;
     }
-
-    const feedBefore = getItemQuantity(feedItem);
-    if (feedBefore < requiredFeed) {
-      this.events.emit('game-toast', `普通飼料不足!需要 ${requiredFeed} 包,背包有 ${feedBefore} 包`);
-      return;
-    }
-
-    const feedAfter = feedBefore - requiredFeed;
-    if (feedFromLivestock) {
-      backpackSystem.updateLivestockItem(Number(feedFromLivestock.itemId), -requiredFeed);
-    } else {
-      backpackSystem.deductItem('item', 2);
-      const livestockStored: any[] = JSON.parse(localStorage.getItem(LIVESTOCK_KEY) || '[]');
-      const lIdx = livestockStored.findIndex((item: any) => isBasicFeed(item));
-      if (lIdx !== -1) livestockStored[lIdx].amount = feedAfter;
-      else livestockStored.push({ id: 0, itemType: 'livestock', itemId: 2, amount: feedAfter, name: '普通飼料', sprite: 'feed_normal.png', sellPrice: 0, growTimeSec: 0 });
-      localStorage.setItem(LIVESTOCK_KEY, JSON.stringify(livestockStored));
-    }
-
-
-    coop.feedingStatus = 'fed';
-    coop.lastFedAt = Date.now();
-    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-    window.dispatchEvent(new Event('inventory-updated'));
-    this.refreshCoopPanelStatus(panelEl);
 
     try {
+      console.log('[FEED API REQUEST] /api/animals/chicken-coop/feed-all');
       const res = await authFetch('/api/animals/chicken-coop/feed-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
       const result = await res.json();
+      console.log('[FEED API RESPONSE]', result);
       if (!result.success) {
         console.warn('[FEED-ALL API FAIL]', result);
+        if (result.message) this.events.emit('game-toast', result.message);
+        return;
       }
+      // 成功：同步狀態
+      this.events.emit('game-toast', '餵食成功！');
+      console.log('[FEED AFTER SYNC] calling syncChickenCoopStatus');
+      await this.syncChickenCoopStatus();
+      console.log('[FEED BACKPACK REFRESHED] calling backpackSystem.fetchAll');
+      backpackSystem.fetchAll();
+      window.dispatchEvent(new Event('inventory-updated'));
+      // 檢查背包飼料是否已扣
+      const backpackState = backpackSystem.getState();
+      const feedItem = [...backpackState.items].find((i: any) => Number(i.itemId) === 2);
+      console.log('[FEED INVENTORY CHECK]', {
+        feedBefore: result.feedBefore,
+        feedAfter: result.feedAfter,
+        backpackFeedItemId: feedItem?.itemId,
+        backpackFeedAmount: feedItem?.quantity ?? feedItem?.amount ?? feedItem?.count,
+      });
+      this.refreshCoopPanelStatus(panelEl);
     } catch (err) {
       console.warn('[FEED-ALL API ERROR]', err);
     }
@@ -2766,36 +2739,52 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 收雞蛋按鈕 handler ──
   private async handleCollectEggs(panelEl: HTMLDivElement) {
-    const coopRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (!coopRaw) { this.events.emit('game-toast', '找不到雞舍資料'); return; }
-    const coop = JSON.parse(coopRaw);
-    const eggs = Number(coop.eggCount || 0);
-    if (eggs <= 0) { this.events.emit('game-toast', '目前沒有可收雞蛋'); return; }
+    console.log('[COLLECT BUTTON CLICKED]');
+    // 用 API slots 確認是否有蛋可收
+    const slots = this.coopChickenStatus?.slots ?? [];
+    const readySlots = slots.filter((s: any) => s.state === 'READY_TO_COLLECT');
+    if (readySlots.length === 0) {
+      this.events.emit('game-toast', '目前沒有可收雞蛋');
+      return;
+    }
 
-    let apiSuccess = false;
     try {
+      console.log('[COLLECT API REQUEST] /api/animals/chicken-coop/collect-all', { eggCount: readySlots.length });
       const res = await authFetch('/api/animals/chicken-coop/collect-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eggCount: eggs }),
+        body: JSON.stringify({ eggCount: readySlots.length }),
       });
       const result = await res.json();
-      if (result.success) {
-        apiSuccess = true;
-      } else {
+      console.log('[COLLECT API RESPONSE]', result);
+      if (!result.success) {
         console.warn('[COLLECT-ALL API FAIL]', result);
+        if (result.message) this.events.emit('game-toast', result.message);
+        return;
       }
-    } catch (err: any) {
+      // 成功：同步狀態
+      this.events.emit('game-toast', result.message || '收蛋成功！');
+      console.log('[COLLECT AFTER SYNC] calling syncChickenCoopStatus');
+      await this.syncChickenCoopStatus();
+      console.log('[COLLECT BACKPACK REFRESHED] calling backpackSystem.fetchAll');
+      backpackSystem.fetchAll();
+      window.dispatchEvent(new Event('inventory-updated'));
+      // 檢查背包雞蛋是否入庫
+      const backpackState = backpackSystem.getState();
+      const eggItem = [...backpackState.livestock].find((i: any) => Number(i.itemId) === 1);
+      const feedItem = [...backpackState.items].find((i: any) => Number(i.itemId) === 2);
+      console.log('[COLLECT INVENTORY CHECK]', {
+        eggItemId: eggItem?.itemId,
+        eggAmount: eggItem?.quantity ?? eggItem?.amount ?? eggItem?.count,
+        feedItemId: feedItem?.itemId,
+        feedAmount: feedItem?.quantity ?? feedItem?.amount ?? feedItem?.count,
+        resultEggBefore: result.eggBefore,
+        resultEggAfter: result.eggAfter,
+      });
+      this.refreshCoopPanelStatus(panelEl);
+    } catch (err) {
       console.warn('[COLLECT-ALL API ERROR]', err);
     }
-
-    const before = [...backpackSystem.getState().livestock];
-    backpackSystem.updateLivestockItem(1, eggs);
-
-    coop.eggCount = 0;
-    localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(coop));
-    window.dispatchEvent(new Event('inventory-updated'));
-    this.refreshCoopPanelStatus(panelEl);
   }
 
   // ── DEV 立即產蛋 handler ──
@@ -2816,8 +2805,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ── 重新整理雞舍面板狀態（DOM 重建後重新 binding）──
   private refreshCoopPanelStatus(panelEl: HTMLDivElement) {
     // 如果 panel 已關閉，不做任何事
-    if (!this._coopPanelEl) return;
+    if (!this._coopPanelEl) { console.log('[PANEL REFRESH] skipped — _coopPanelEl is null'); return; }
     if (!document.body.contains(panelEl)) {
+      console.log('[PANEL REFRESH] skipped — panelEl not in DOM');
       if (this._coopCountdownInterval !== null) {
         clearInterval(this._coopCountdownInterval);
         this._coopCountdownInterval = null;
@@ -2825,33 +2815,51 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this._coopListenersInitialized = false;
       return;
     }
-    const raw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (!raw) return;
     try {
-      const data = JSON.parse(raw);
-      const animals = data.animals ?? [];
-      const animalCount = animals.length;
-      const babyCount = animals.filter((a: any) => a.stage === 'baby').length;
-      const adultCount = animals.filter((a: any) => a.stage === 'adult').length;
-      const feedStatus = data.feedingStatus === 'fed' ? 'fed' : 'none';
-      const lastFedAt = data.lastFedAt ?? null;
-      const eggCount = data.eggCount ?? 0;
+      const slots = this.coopChickenStatus?.slots ?? [];
+      const animalCount = slots.filter((s: any) => s.state !== 'EMPTY').length;
+      const babyCount = slots.filter((s: any) => s.state === 'BABY').length;
+      const adultCount = animalCount - babyCount;
+      const collectableEggs = slots.filter((s: any) => s.state === 'READY_TO_COLLECT').length;
+      const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
+      const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
+      const hasProducing = slots.some((s: any) => s.state === 'PRODUCING');
+      const canFeed = hasReadyToFeed && animalCount > 0;
+      const feedBtnLabel = !hasReadyToFeed && hasReadyToCollect ? '請先收蛋' : (animalCount === 0 ? '無雞' : '餵食');
+      const canCollect = collectableEggs > 0;
+      const feedStatus: 'none' | 'fed' = 'none';
+      const lastFedAt: number | null = null;
+      const eggCount = collectableEggs;
+      const capacity = slots.length || 4;
+
+      console.log('[PANEL REFRESH]', {
+        slotStates: slots.map((s: any) => s.state),
+        eggCount,
+        canFeed,
+        canCollect,
+        hasReadyToCollect,
+        hasReadyToFeed,
+        hasProducing,
+      });
 
       const container = panelEl.querySelector('#coop-status-container');
-      if (!container) return;
+      if (!container) { console.warn('[PANEL REFRESH] container not found'); return; }
       // 重新渲染狀態文字
-      const html = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity: data.capacity ?? 4 });
+      const html = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing });
       container.innerHTML = html;
       // DOM 重建後必須重新 binding
       this.bindChickenCoopPanelEvents(panelEl);
-    } catch(e) {}
+    } catch(e) { console.warn('[PANEL REFRESH] error', e); }
   }
 
   // ── 雞舍狀態區塊 HTML（供 refreshCoopPanelStatus 重複呼叫）──
-  private buildCoopStatusHtml(state: { animalCount: number; babyCount: number; adultCount: number; feedStatus: 'fed' | 'none'; lastFedAt: number | null; eggCount: number; capacity: number }) {
-    const { animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity } = state;
-    const feedBtnDisabled = feedStatus === 'fed' || animalCount === 0;
-    const feedBtnLabel = animalCount === 0 ? '無雞' : '餵食';
+  // canFeed / feedBtnLabel 由外部根據 slots state 計算後傳入
+  private buildCoopStatusHtml(state: { animalCount: number; babyCount: number; adultCount: number; feedStatus: 'fed' | 'none'; lastFedAt: number | null; eggCount: number; capacity: number; canFeed: boolean; feedBtnLabel: string; canCollect: boolean; hasReadyToCollect: boolean; hasProducing: boolean }) {
+    const { animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing } = state;
+    const feedBtnDisabled = !canFeed || animalCount === 0;
+    // 飼料狀態文字：PRODUCING > 可收蛋 > 已餵食 > 未餵食
+    const feedStatusLabel = hasProducing ? '生產中' : (hasReadyToCollect ? '可收蛋' : (feedStatus === 'fed' ? '已餵食' : '未餵食'));
+    const feedStatusColor = hasProducing ? '#1565C0' : (hasReadyToCollect ? '#E8A020' : (feedStatus === 'fed' ? '#2E7D32' : '#C0392B'));
     let countdownHtml = '';
     const BABY_GROW_MS = 10 * 60 * 1000;
     const ADULT_EGG_MS = 15 * 60 * 1000;
@@ -2870,11 +2878,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       <div style="font-size: 13px; margin-bottom: 6px;">小雞:${babyCount} 隻 成雞:${adultCount} 隻</div>
       <div style="border-top: 2px dashed #E8C84A; padding-top: 8px; margin-top: 4px;">
         <div style="font-size: 13px; font-weight: 700; color: #7A6A59; margin-bottom: 4px;">飼料狀態</div>
-        <div style="font-size: 15px; font-weight: 700; color: ${feedStatus === 'fed' ? '#2E7D32' : '#C0392B'};">${feedStatus === 'fed' ? '已餵食' : '未餵食'}</div>
+        <div style="font-size: 15px; font-weight: 700; color: ${feedStatusColor};">${feedStatusLabel}</div>
         ${countdownHtml}
         <button id="coop-feed-btn" data-action="feed" style="width:100%;padding:8px 16px;background:${feedBtnDisabled?'#ccc':'#6DB33F'};color:${feedBtnDisabled?'#999':'#fff'};border:3px solid ${feedBtnDisabled?'#999':'#4A7C2F'};border-radius:6px;font-size:14px;font-weight:700;cursor:${feedBtnDisabled?'not-allowed':'pointer'};font-family:'Cubic 11',sans-serif;margin-top:6px;margin-bottom:6px;">${feedBtnLabel}</button>
         <div style="font-size:13px;color:#7A6A59;margin-bottom:6px;">可收雞蛋:<strong id="coop-egg-count">${eggCount}</strong> 顆</div>
-        <button id="coop-collect-eggs-btn" data-action="collect-eggs" style="width:100%;padding:8px 16px;background:${eggCount>0?'#E8A020':'#ccc'};color:${eggCount>0?'#3B2412':'#999'};border:3px solid ${eggCount>0?'#5A3418':'#999'};border-radius:6px;font-size:14px;font-weight:700;cursor:${eggCount>0?'pointer':'not-allowed'};font-family:'Cubic 11',sans-serif;margin-bottom:8px;">收雞蛋</button>
+        <button id="coop-collect-eggs-btn" data-action="collect-eggs" style="width:100%;padding:8px 16px;background:${canCollect?'#E8A020':'#ccc'};color:${canCollect?'#3B2412':'#999'};border:3px solid ${canCollect?'#5A3418':'#999'};border-radius:6px;font-size:14px;font-weight:700;cursor:${canCollect?'pointer':'not-allowed'};font-family:'Cubic 11',sans-serif;margin-bottom:8px;">收雞蛋</button>
       </div>`;
   }
 
@@ -2918,20 +2926,18 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // 從 API 推算生長階段：READY_TO_COLLECT / PRODUCING / READY_TO_FEED / BABY
     const apiBabyCount = slots.filter((s: any) => s.state === 'BABY').length;
     const apiAdultCount = apiAnimalCount - apiBabyCount;
-
-    // feedStatus / lastFedAt / eggCount 仍從 localStorage 讀（餵食/生蛋功能尚未重構）
-    let feedStatus: 'none' | 'fed' = 'none';
-    let lastFedAt: number | null = null;
-    let eggCount = 0;
-    const savedRaw = localStorage.getItem('tlo_farm_chicken_coop');
-    if (savedRaw) {
-      try {
-        const savedData = JSON.parse(savedRaw);
-        feedStatus = savedData.feedingStatus === 'fed' ? 'fed' : 'none';
-        lastFedAt = savedData.lastFedAt ?? null;
-        eggCount = savedData.eggCount ?? 0;
-      } catch(e) {}
-    }
+    // 餵食判斷：只有 READY_TO_FEED 狀態才能餵，其他狀態（READY_TO_COLLECT/PRODUCING/BABY）不行
+    const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
+    const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
+    const hasProducing = slots.some((s: any) => s.state === 'PRODUCING');
+    const collectableEggs = slots.filter((s: any) => s.state === 'READY_TO_COLLECT').length;
+    const canFeed = hasReadyToFeed && apiAnimalCount > 0;
+    const feedBtnLabel = !hasReadyToFeed && hasReadyToCollect ? '請先收蛋' : (apiAnimalCount === 0 ? '無雞' : '餵食');
+    const canCollect = collectableEggs > 0;
+    // feedStatus / lastFedAt：READY_TO_COLLECT 視為未餵食（餵食狀態由 slot state 決定）
+    const feedStatus: 'none' | 'fed' = 'none';
+    const lastFedAt: number | null = null;
+    const eggCount = collectableEggs;
 
     console.log('[OPEN COOP PANEL] from API — animalCount:', apiAnimalCount, 'babyCount:', apiBabyCount, 'adultCount:', apiAdultCount, 'capacity:', apiCapacity, 'slots:', slots.length);
 
@@ -3035,6 +3041,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         lastFedAt,
         eggCount,
         capacity: apiCapacity,
+        canFeed,
+        feedBtnLabel,
+        canCollect,
+        hasReadyToCollect,
+        hasProducing,
       });
       this.bindChickenCoopPanelEvents(panel);
       console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);

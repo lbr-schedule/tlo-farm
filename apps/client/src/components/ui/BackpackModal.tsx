@@ -36,7 +36,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
       let list: BackpackItem[] = [];
       if (activeTab === 'seed') list = state.seeds;
       else if (activeTab === 'crop') list = state.crops;
-      else if (activeTab === 'livestock') list = state.livestock.filter(i => i.itemId !== 2 && i.itemId !== 1);
+      else if (activeTab === 'livestock') list = state.livestock.filter(i => i.itemId !== 2);
       else if (activeTab === 'item') list = state.items;
       if (DEBUG) { console.log('[BACKPACK MODAL DATA]', { seeds: state.seeds, crops: state.crops, items: state.items, loading: state.loading }); }
       setItems(list);

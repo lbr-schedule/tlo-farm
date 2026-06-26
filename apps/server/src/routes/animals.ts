@@ -376,9 +376,9 @@ router.post('/chicken-coop/feed', async (req: AuthRequest, res: Response) => {
 // POST /api/animals/chicken-coop/feed-all — 一次餵完所有 READY_TO_FEED 的雞
 router.post('/chicken-coop/feed-all', async (req: AuthRequest, res: Response) => {
   try {
-    console.log('[FEED-ALL ENTRY]', { userId: req.userId, body: req.body });
     const userId = req.userId;
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
+    console.log('[FEED-ALL ENTRY]', { userId, body: req.body });
 
     // 確保雞舍資料存在
     await ensureChickenData(userId);
@@ -411,9 +411,9 @@ router.post('/chicken-coop/feed-all', async (req: AuthRequest, res: Response) =>
     const feedBefore = invItem?.amount ?? 0;
     console.log('[FEED-ALL DEBUG]', {
       userId,
-      slotsCount: slots.length,
+      feedableSlots: slots.length,
+      requiredFeed: slots.length,
       feedBefore,
-      feedNeeded: slots.length,
       invItemId: invItem?.id,
       invItemType: invItem ? 'item' : 'none',
     });
@@ -446,7 +446,21 @@ router.post('/chicken-coop/feed-all', async (req: AuthRequest, res: Response) =>
       );
     }
 
-    return res.json({ success: true, message: `餵食成功！扣了 ${slots.length} 包普通飼料`, feedDeducted: slots.length });
+    // 查更新後的槽位狀態
+    const updatedSlotsResult = await db.execute(
+      `SELECT id, slot_index, state FROM chicken_slots WHERE user_id = ? ORDER BY slot_index`,
+      [userId]
+    );
+    console.log('[FEED-ALL SUCCESS]', {
+      userId,
+      feedableSlots: slots.length,
+      requiredFeed: slots.length,
+      feedBefore,
+      feedAfter,
+      updatedSlots: updatedSlotsResult.rows,
+    });
+
+    return res.json({ success: true, message: `餵食成功！扣了 ${slots.length} 包普通飼料`, feedDeducted: slots.length, feedBefore, feedAfter, slotsUpdated: slots.length });
   } catch (error) {
     console.error('[Chicken Coop] feed-all error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -476,8 +490,8 @@ router.post('/chicken-coop/collect', async (req: AuthRequest, res: Response) => 
       return res.status(400).json({ success: false, message: '這隻雞還沒有生出蛋' });
     }
 
-    // Add egg to inventory (livestock type, item_id = 9)
-    const EGG_ITEM_ID = 9;
+    // Add egg to inventory (livestock type, item_id = 1 — consistent with sell API)
+    const EGG_ITEM_ID = 1;
     const eggInvRows = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
       [userId, EGG_ITEM_ID]
@@ -538,9 +552,14 @@ router.post('/chicken-coop/collect-all', async (req: AuthRequest, res: Response)
     }
 
     const slots = slotRows.rows as { id: number; slot_index: number; state: string; feed_applied_at: number; produced_at: number }[];
+    console.log('[COLLECT-ALL ENTRY]', {
+      userId,
+      bodyEggCount: eggCount,
+      readySlots: slots.map(s => ({ id: s.id, slot_index: s.slot_index, state: s.state })),
+    });
 
-    // 檢查雞蛋庫存（用於 log）
-    const EGG_ITEM_ID = 9;
+    // 檢查雞蛋庫存（用於 log）— 雞蛋 item_id = 1（與 sell API 一致）
+    const EGG_ITEM_ID = 1;
     const eggInvRows = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
       [userId, EGG_ITEM_ID]
@@ -575,7 +594,15 @@ router.post('/chicken-coop/collect-all', async (req: AuthRequest, res: Response)
       );
     }
 
-    return res.json({ success: true, message: `收取了 ${eggCount} 個雞蛋！`, eggsAdded: eggCount });
+    // 查更新後的庫存
+    const eggAfterRows = await db.execute(
+      `SELECT amount FROM inventories WHERE user_id = ? AND item_type = 'livestock' AND item_id = ?`,
+      [userId, EGG_ITEM_ID]
+    );
+    const eggAfter = (eggAfterRows.rows[0] as any)?.amount ?? 0;
+    console.log('[COLLECT-ALL SUCCESS]', { userId, slotsUpdated: slots.length, eggBefore, eggAfter, eggsAdded: slots.length });
+
+    return res.json({ success: true, message: `收取了 ${slots.length} 個雞蛋！`, eggsAdded: slots.length, eggBefore, eggAfter });
   } catch (error) {
     console.error('[Chicken Coop] collect-all error:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });

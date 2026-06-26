@@ -191,24 +191,25 @@ class BackpackSystem {
         this.fetchItems('item'),
         this.fetchItems('livestock'),
       ]);
-      // Merge：localStorage 永遠是事實來源（本地操作的紀錄）
-      // API 結果只用來補充 localStorage 沒有的 itemId
+      console.log('[BACKPACK LIVESTOCK RAW SERVER]', JSON.parse(JSON.stringify(apiLivestock)));
+      // Merge 策略：API 為主（真實來源），localStorage 只補充 API 沒有的 itemId
+      // 避免 localStorage 殘留的舊錯誤 itemId 覆蓋正確 API 資料
       const mergedMap = new Map<string, BackpackItem>();
-      // 先放 localStorage（保留本地所有操作）
+      // 先以 API 為基準（collect-all / 收蛋 / server 真實資料）
+      for (const apiItem of apiLivestock) {
+        mergedMap.set(String(apiItem.itemId), { ...apiItem });
+      }
+      // localStorage 只用來補充 API 沒有、但本地已有的 itemId（避免本地操作後刷新被洗掉）
       const localSaved = this.loadLivestockLocal();
       for (const localItem of localSaved) {
-        mergedMap.set(String(localItem.itemId), { ...localItem });
-      }
-      // 再用 API 結果補充（只加 API 有而 localStorage 沒有的）
-      for (const apiItem of apiLivestock) {
-        const key = String(apiItem.itemId);
+        const key = String(localItem.itemId);
         if (!mergedMap.has(key)) {
-          mergedMap.set(key, apiItem);
+          mergedMap.set(key, { ...localItem });
+          console.log('[BACKPACK LIVESTOCK MERGE LOCAL-ONLY]', { itemId: localItem.itemId, name: localItem.name });
         }
       }
-      // ✅ 移除 feed 過濾：itemId=2 需要留在 state.items，讓商店顯示正確
-      // feed 同時存在於 state.items（API 來源）和 state.livestock（localStorage migration）
       const mergedLivestock = Array.from(mergedMap.values());
+      console.log('[BACKPACK LIVESTOCK FINAL STATE]', JSON.parse(JSON.stringify(mergedLivestock)));
       this.setState({ seeds, crops, items, livestock: mergedLivestock, loading: false });
     } catch (err: any) {
       this.setState({ loading: false, error: err.message, livestock: this.state.livestock });
@@ -323,26 +324,19 @@ class BackpackSystem {
       }
     }
 
-    // 從 livestock 找：itemId 是商品 item_id（如雞蛋 itemId=9），不是 inventory row id
+    // 從 livestock 找：itemId 是商品 item_id（如雞蛋 itemId=1），不是 inventory row id
     const liveItem = this.state.livestock.find(i => i.itemId === itemId || i.item_id === itemId);
     if (liveItem) {
-      console.warn('[SELL EGG REQUEST DEBUG]', {
-        liveItem,
-        itemId_arg: itemId,
-        liveItem_itemId: liveItem.itemId,
-        liveItem_id: liveItem.id,
-        liveItem_name: liveItem.name,
-        liveItem_amount: liveItem.amount,
-        liveItem_itemType: liveItem.itemType,
-      });
+      const requestBody = { itemId: liveItem.itemId, itemType: 'livestock', amount: 1 };
+      console.log('[SELL LIVESTOCK REQUEST]', { liveItem: { itemId: liveItem.itemId, item_id: liveItem.item_id, name: liveItem.name, amount: liveItem.amount }, requestBody });
       try {
-        // ✅ 雞蛋走 /api/shop/sell（通用 API），帶 itemType='livestock'
         const res = await authFetch('/api/shop/sell', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemId: liveItem.itemId, itemType: 'livestock', amount: 1 }),
+          body: JSON.stringify(requestBody),
         });
         const data = await res.json();
+        console.log('[SELL LIVESTOCK RESPONSE]', data);
         if (data.success) {
           await this.fetchAll();
           return { success: true, newGold: data.user.gold, message: data.message };
