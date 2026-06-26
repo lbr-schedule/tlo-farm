@@ -47,21 +47,21 @@ const NPC_NAMES = ['阿福', '小葵', '王太太', '王伯伯'];
 
 // 作物資料：ID, 名稱, 售價
 const CROPS = [
-  { id: 1, name: '小麥', sellPrice: 10 },
-  { id: 2, name: '玉米', sellPrice: 20 },
-  { id: 3, name: '紅蘿蔔', sellPrice: 35 },
-  { id: 4, name: '馬鈴薯', sellPrice: 55 },
-  { id: 5, name: '甘蔗', sellPrice: 75 },
-  { id: 6, name: '草莓', sellPrice: 90 },
-  { id: 7, name: '番茄', sellPrice: 110 },
-  { id: 8, name: '南瓜', sellPrice: 130 },
-  { id: 9, name: '黃豆', sellPrice: 150 },
-  { id: 10, name: '葡萄', sellPrice: 175 },
-  { id: 11, name: '蘋果', sellPrice: 200 },
-  { id: 12, name: '可可豆', sellPrice: 230 },
-  { id: 13, name: '棉花', sellPrice: 260 },
-  { id: 14, name: '咖啡豆', sellPrice: 290 },
-  { id: 15, name: '茶葉', sellPrice: 320 },
+  { id: 1, name: '小麥', sellPrice: 10, requiredLevel: 1 },
+  { id: 2, name: '玉米', sellPrice: 20, requiredLevel: 1 },
+  { id: 3, name: '紅蘿蔔', sellPrice: 35, requiredLevel: 2 },
+  { id: 4, name: '馬鈴薯', sellPrice: 55, requiredLevel: 3 },
+  { id: 5, name: '甘蔗', sellPrice: 75, requiredLevel: 4 },
+  { id: 6, name: '草莓', sellPrice: 90, requiredLevel: 5 },
+  { id: 7, name: '番茄', sellPrice: 110, requiredLevel: 6 },
+  { id: 8, name: '南瓜', sellPrice: 130, requiredLevel: 7 },
+  { id: 9, name: '黃豆', sellPrice: 150, requiredLevel: 4 },
+  { id: 10, name: '葡萄', sellPrice: 175, requiredLevel: 8 },
+  { id: 11, name: '蘋果', sellPrice: 200, requiredLevel: 9 },
+  { id: 12, name: '可可豆', sellPrice: 230, requiredLevel: 10 },
+  { id: 13, name: '棉花', sellPrice: 260, requiredLevel: 11 },
+  { id: 14, name: '咖啡豆', sellPrice: 290, requiredLevel: 12 },
+  { id: 15, name: '茶葉', sellPrice: 320, requiredLevel: 13 },
 ];
 
 // 訂單難度設定（測試階段）
@@ -111,17 +111,25 @@ function randomDifficulty(): Difficulty {
 }
 
 // 根據難度生成訂單
-function generateOrder(userId: number) {
+function generateOrder(userId: number, playerLevel: number) {
   const difficulty = randomDifficulty();
   const config = DIFFICULTY_CONFIG[difficulty];
   const npcName = randomPick(NPC_NAMES);
 
   // 決定需求種類數量
   const typeCount = randomInt(config.typeCount[0], config.typeCount[1]);
-  
-  // 隨機選擇作物（不重複）
-  const shuffledCrops = [...CROPS].sort(() => Math.random() - 0.5);
-  const selectedCrops = shuffledCrops.slice(0, typeCount);
+
+  // 只從玩家已解鎖的作物中抽取
+  const unlockedCrops = CROPS.filter(c => {
+    const cropLevel = c.requiredLevel ?? 1;
+    return cropLevel <= playerLevel;
+  });
+  if (unlockedCrops.length === 0) {
+    throw { status: 400, message: '尚無已解鎖的作物' };
+  }
+
+  const shuffledCrops = [...unlockedCrops].sort(() => Math.random() - 0.5);
+  const selectedCrops = shuffledCrops.slice(0, Math.min(typeCount, unlockedCrops.length));
 
   // 生成需求並計算作物總價值
   const requirements = selectedCrops.map(crop => {
@@ -179,6 +187,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     let orders = ordersResult.rows || [];
 
+    // 取得玩家等級（用於過濾訂單作物）
+    let playerLevel = 1;
+    const userLevelResult = await db.execute(`SELECT level FROM users WHERE id = ?`, [userId]);
+    if (userLevelResult.rows?.[0]?.level) {
+      playerLevel = userLevelResult.rows[0].level;
+    }
+
     // 標記過期的 active 訂單為 failed
     const now = new Date();
     for (const order of orders) {
@@ -202,7 +217,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     // 補足 3 筆訂單
     while (orders.length < 3) {
-      const orderData = generateOrder(userId);
+      const orderData = generateOrder(userId, playerLevel);
       const expiresAtStr = orderData.expiresAt.toISOString();
       const nowTimestamp = Date.now(); // 使用 Unix timestamp 確保唯一性
       await db.execute(
@@ -269,11 +284,17 @@ router.post('/:id/deliver', async (req: AuthRequest, res: Response) => {
     const requirements = parseRequirements(order.requirements);
     const cropNameMap: Record<string, number> = {
       '小麥': 1, '玉米': 2, '紅蘿蔔': 3, '馬鈴薯': 4,
+      '甘蔗': 5, '草莓': 6, '番茄': 7, '南瓜': 8,
+      '黃豆': 9, '葡萄': 10, '蘋果': 11, '可可豆': 12,
+      '棉花': 13, '咖啡豆': 14, '茶葉': 15,
     };
 
     for (const req of requirements) {
       const cropId = cropNameMap[req.itemName];
-      if (!cropId) continue;
+      if (!cropId) {
+        console.warn(`[DELIVER] unknown crop: ${req.itemName}`);
+        return res.status(400).json({ success: false, message: `無法識別的作物：${req.itemName}` });
+      }
 
       const invResult = await db.execute(
         `SELECT amount FROM inventories WHERE user_id = ? AND item_type = 'crop' AND item_id = ?`,
@@ -393,8 +414,15 @@ router.post('/:id/refresh', async (req: AuthRequest, res: Response) => {
       [orderId, userId]
     );
 
+    // 取得玩家等級
+    let playerLevel = 1;
+    const userLevelResult = await db.execute(`SELECT level FROM users WHERE id = ?`, [userId]);
+    if (userLevelResult.rows?.[0]?.level) {
+      playerLevel = userLevelResult.rows[0].level;
+    }
+
     // 生成新訂單
-    const orderData = generateOrder(userId);
+    const orderData = generateOrder(userId, playerLevel);
     const insertResult = await db.execute(
       `INSERT INTO orders (user_id, npc_name, difficulty, requirements, reward_coins, reward_exp, status, expires_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, datetime('now'))`,
