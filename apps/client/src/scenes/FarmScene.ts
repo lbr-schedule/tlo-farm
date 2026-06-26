@@ -91,6 +91,14 @@ export const CROP_SPRITES: Record<string, Record<GrowthStage, string>> = {
     dry: 'crop_potato_dry',
     withered: 'crop_potato_withered',
   },
+  sugarcane: {
+    seed: 'crop_sugarcane_seed',
+    seedling: 'crop_sugarcane_seedling',
+    growing: 'crop_sugarcane_growing',
+    mature: 'crop_sugarcane_mature',
+    dry: 'crop_sugarcane_dry',
+    withered: 'crop_sugarcane_withered',
+  },
 };
 
 // 作物土堆視覺錨點偏移(x: 右移, y: 下移 = 正值往下)
@@ -308,7 +316,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // 5 甘蔗
     this.load.image('crop_sugarcane_seed', '/assets/crops/甘蔗種子.png');
     this.load.image('crop_sugarcane_seedling', '/assets/crops/甘蔗幼苗.png');
-    this.load.image('crop_sugarcane_growing', '/assets/crops/甘蔗成長中.png');
+    this.load.image('crop_sugarcane_growing', '/assets/crops/甘蔗果實.png');
     this.load.image('crop_sugarcane_mature', '/assets/crops/甘蔗成熟.png');
     this.load.image('crop_sugarcane_dry', '/assets/crops/甘蔗營養不良.png');
     this.load.image('crop_sugarcane_withered', '/assets/crops/甘蔗枯萎.png');
