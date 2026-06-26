@@ -687,7 +687,7 @@ router.post('/fertilize', async (req: AuthRequest, res: Response) => {
     }); }
 
     if (!invBefore || invBefore.amount < 1) {
-      throw { status: 400, message: '背包沒有普通肥料！' };
+      return res.status(400).json({ success: false, message: '肥料不足，請先購買普通肥料' });
     }
 
     // 扣除 10 金幣
