@@ -111,7 +111,18 @@ function randomDifficulty(): Difficulty {
 }
 
 // 根據難度生成訂單
-function generateOrder(userId: number, playerLevel: number) {
+async function generateOrder(userId: number, playerLevel: number) {
+  // 直接從 DB 查詢玩家已解鎖作物（使用真實 required_level）
+  const cropsResult = await db.execute(
+    `SELECT id, name_zh_tw as name, sell_price as sellPrice, required_level as requiredLevel FROM crops WHERE required_level <= ? ORDER BY id`,
+    [playerLevel]
+  );
+  const unlockedCrops = cropsResult.rows || [];
+
+  if (unlockedCrops.length === 0) {
+    throw { status: 400, message: '尚無已解鎖的作物' };
+  }
+
   const difficulty = randomDifficulty();
   const config = DIFFICULTY_CONFIG[difficulty];
   const npcName = randomPick(NPC_NAMES);
@@ -119,15 +130,7 @@ function generateOrder(userId: number, playerLevel: number) {
   // 決定需求種類數量
   const typeCount = randomInt(config.typeCount[0], config.typeCount[1]);
 
-  // 只從玩家已解鎖的作物中抽取
-  const unlockedCrops = CROPS.filter(c => {
-    const cropLevel = c.requiredLevel ?? 1;
-    return cropLevel <= playerLevel;
-  });
-  if (unlockedCrops.length === 0) {
-    throw { status: 400, message: '尚無已解鎖的作物' };
-  }
-
+  // 只從玩家已解鎖的作物中抽取（unlockedCrops 已從 DB 查詢，無需 filter）
   const shuffledCrops = [...unlockedCrops].sort(() => Math.random() - 0.5);
   const selectedCrops = shuffledCrops.slice(0, Math.min(typeCount, unlockedCrops.length));
 
@@ -224,7 +227,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     // 補足 3 筆訂單
     while (orders.length < 3) {
-      const orderData = generateOrder(userId, playerLevel);
+      const orderData = await generateOrder(userId, playerLevel);
       const expiresAtStr = orderData.expiresAt.toISOString();
       const nowTimestamp = Date.now(); // 使用 Unix timestamp 確保唯一性
       await db.execute(
@@ -446,7 +449,7 @@ router.post('/:id/refresh', async (req: AuthRequest, res: Response) => {
     }
 
     // 生成新訂單
-    const orderData = generateOrder(userId, playerLevel);
+    const orderData = await generateOrder(userId, playerLevel);
     const insertResult = await db.execute(
       `INSERT INTO orders (user_id, npc_name, difficulty, requirements, reward_coins, reward_exp, status, expires_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, datetime('now'))`,
