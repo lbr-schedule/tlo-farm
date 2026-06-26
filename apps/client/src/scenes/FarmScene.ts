@@ -981,8 +981,16 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     closeBtn.setDepth(1);
     this.seedPopup.add(closeText);
 
-    // ── 作物清單(只渲染4筆)──
-    displayCrops.forEach((crop, i) => {
+    // ── 作物清單：改為依背包實際持有種子顯示（不再寫死前4種）──
+    const seedsWithAmount = seeds.filter((s: any) => s.amount > 0);
+    console.log('[SEED SELECT INVENTORY]', { seedItems: JSON.parse(JSON.stringify(seedsWithAmount)) });
+
+    const displaySeeds = seedsWithAmount
+      .map((seed: any) => cropDetailsCache.find((c: any) => c.id === seed.itemId))
+      .filter((c: any) => c !== undefined);
+    console.log('[SEED SELECT DISPLAY]', { displaySeeds: displaySeeds.map((c: any) => ({ id: c.id, name: c.nameZhTw })) });
+
+    displaySeeds.forEach((crop: any, i: number) => {
       const rowY = LIST_Y + i * ROW_H;
       const amount = seedCountMap[crop.id] || 0;
       const disabled = amount <= 0;
