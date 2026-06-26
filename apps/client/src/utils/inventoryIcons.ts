@@ -28,7 +28,7 @@ export const fruitIconById: Record<number, string> = {
   2: '/assets/icon/cropped/icon_fruit_corn.png',
   3: '/assets/icon/cropped/icon_fruit_carrot.png',  // 紅蘿蔔
   4: '/assets/icon/cropped/icon_fruit_potato.png',
-  5: '/assets/icon/cropped/icon_fruit.png',   // 西瓜 (無專用)
+  5: '/assets/crops/甘蔗果實.png',   // 甘蔗果實
   6: '/assets/icon/cropped/icon_fruit.png',   // 南瓜 (無專用)
   7: '/assets/icon/cropped/icon_fruit.png',   // 胡蘿蔔 (無專用)
   8: '/assets/icon/cropped/icon_fruit.png',   // 藍莓 (無專用)
