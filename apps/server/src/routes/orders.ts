@@ -51,6 +51,17 @@ const CROPS = [
   { id: 2, name: '玉米', sellPrice: 20 },
   { id: 3, name: '紅蘿蔔', sellPrice: 35 },
   { id: 4, name: '馬鈴薯', sellPrice: 55 },
+  { id: 5, name: '甘蔗', sellPrice: 75 },
+  { id: 6, name: '草莓', sellPrice: 90 },
+  { id: 7, name: '番茄', sellPrice: 110 },
+  { id: 8, name: '南瓜', sellPrice: 130 },
+  { id: 9, name: '黃豆', sellPrice: 150 },
+  { id: 10, name: '葡萄', sellPrice: 175 },
+  { id: 11, name: '蘋果', sellPrice: 200 },
+  { id: 12, name: '可可豆', sellPrice: 230 },
+  { id: 13, name: '棉花', sellPrice: 260 },
+  { id: 14, name: '咖啡豆', sellPrice: 290 },
+  { id: 15, name: '茶葉', sellPrice: 320 },
 ];
 
 // 訂單難度設定（測試階段）

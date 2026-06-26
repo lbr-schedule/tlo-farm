@@ -28,9 +28,10 @@ router.get('/items', async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // MVP Phase 1：只取得四個核心作物（id 1-4）
+    // 作物依玩家等級顯示（所有作物，不限 id）
     const cropsResult = await db.execute(
-      `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp, sprite, required_level as requiredLevel FROM crops WHERE id IN (1, 2, 3, 4)`
+      `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp, sprite, required_level as requiredLevel FROM crops WHERE required_level <= ? ORDER BY required_level ASC`,
+      [playerLevel]
     );
     const crops = cropsResult.rows || [];
 

@@ -134,10 +134,21 @@ export const CROP_STAGE_VISUAL_OFFSET: Record<string, Record<GrowthStage, { x: n
 
 // 作物 ID 映射到 sprite key
 export const CROP_ID_TO_KEY: Record<number, string> = {
-  1: 'wheat',
-  2: 'corn',
-  3: 'carrot',
-  4: 'potato',
+  1: 'wheat',      // 小麥
+  2: 'corn',       // 玉米
+  3: 'carrot',     // 紅蘿蔔
+  4: 'potato',     // 馬鈴薯
+  5: 'sugarcane',  // 甘蔗
+  6: 'strawberry', // 草莓
+  7: 'tomato',     // 番茄
+  8: 'pumpkin',    // 南瓜
+  9: 'soybean',    // 黃豆
+  10: 'grape',     // 葡萄
+  11: 'apple',     // 蘋果
+  12: 'cocoa',     // 可可豆
+  13: 'cotton',    // 棉花
+  14: 'coffee',    // 咖啡豆
+  15: 'tea',       // 茶葉
 };
 
 export const CROP_KEY_TO_ID: Record<string, number> = {
@@ -145,6 +156,17 @@ export const CROP_KEY_TO_ID: Record<string, number> = {
   corn: 2,
   carrot: 3,
   potato: 4,
+  sugarcane: 5,
+  strawberry: 6,
+  tomato: 7,
+  pumpkin: 8,
+  soybean: 9,
+  grape: 10,
+  apple: 11,
+  cocoa: 12,
+  cotton: 13,
+  coffee: 14,
+  tea: 15,
 };
 
 // 作物詳細資料(客戶端快取)
@@ -283,6 +305,84 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.load.image('crop_potato_mature', '/assets/crops/馬鈴薯成熟.png');
     this.load.image('crop_potato_dry', '/assets/crops/馬鈴薯營養不良.png');
     this.load.image('crop_potato_withered', '/assets/crops/馬鈴薯枯萎.png');
+    // 5 甘蔗
+    this.load.image('crop_sugarcane_seed', '/assets/crops/甘蔗種子.png');
+    this.load.image('crop_sugarcane_seedling', '/assets/crops/甘蔗幼苗.png');
+    this.load.image('crop_sugarcane_growing', '/assets/crops/甘蔗成長中.png');
+    this.load.image('crop_sugarcane_mature', '/assets/crops/甘蔗成熟.png');
+    this.load.image('crop_sugarcane_dry', '/assets/crops/甘蔗營養不良.png');
+    this.load.image('crop_sugarcane_withered', '/assets/crops/甘蔗枯萎.png');
+    // 6 草莓
+    this.load.image('crop_strawberry_seed', '/assets/crops/草莓種子.png');
+    this.load.image('crop_strawberry_seedling', '/assets/crops/草莓幼苗.png');
+    this.load.image('crop_strawberry_growing', '/assets/crops/草莓成長中.png');
+    this.load.image('crop_strawberry_mature', '/assets/crops/草莓成熟.png');
+    this.load.image('crop_strawberry_dry', '/assets/crops/草莓營養不良.png');
+    this.load.image('crop_strawberry_withered', '/assets/crops/草莓枯萎.png');
+    // 7 番茄
+    this.load.image('crop_tomato_seed', '/assets/crops/蕃茄種子.png');
+    this.load.image('crop_tomato_seedling', '/assets/crops/蕃茄幼苗.png');
+    this.load.image('crop_tomato_growing', '/assets/crops/蕃茄成長中.png');
+    this.load.image('crop_tomato_mature', '/assets/crops/蕃茄成熟.png');
+    this.load.image('crop_tomato_dry', '/assets/crops/番茄營養不良.png');
+    this.load.image('crop_tomato_withered', '/assets/crops/蕃茄枯萎.png');
+    // 8 南瓜
+    this.load.image('crop_pumpkin_seed', '/assets/crops/南瓜種子.png');
+    this.load.image('crop_pumpkin_seedling', '/assets/crops/南瓜幼苗.png');
+    this.load.image('crop_pumpkin_growing', '/assets/crops/南瓜成長中.png');
+    this.load.image('crop_pumpkin_mature', '/assets/crops/南瓜成熟.png');
+    this.load.image('crop_pumpkin_dry', '/assets/crops/南瓜營養不良.png');
+    this.load.image('crop_pumpkin_withered', '/assets/crops/南瓜枯萎.png');
+    // 9 黃豆
+    this.load.image('crop_soybean_seed', '/assets/crops/黃豆種子.png');
+    this.load.image('crop_soybean_seedling', '/assets/crops/黃豆幼苗.png');
+    this.load.image('crop_soybean_growing', '/assets/crops/黃豆成長中.png');
+    this.load.image('crop_soybean_mature', '/assets/crops/黃豆成熟.png');
+    this.load.image('crop_soybean_dry', '/assets/crops/黃豆營養不良.png');
+    this.load.image('crop_soybean_withered', '/assets/crops/黃豆枯萎.png');
+    // 10 葡萄
+    this.load.image('crop_grape_seed', '/assets/crops/葡萄種子.png');
+    this.load.image('crop_grape_seedling', '/assets/crops/葡萄幼苗.png');
+    this.load.image('crop_grape_growing', '/assets/crops/葡萄成長中.png');
+    this.load.image('crop_grape_mature', '/assets/crops/葡萄成熟.png');
+    this.load.image('crop_grape_dry', '/assets/crops/葡萄營養不良.png');
+    this.load.image('crop_grape_withered', '/assets/crops/葡萄枯萎.png');
+    // 11 蘋果
+    this.load.image('crop_apple_seed', '/assets/crops/蘋果種子.png');
+    this.load.image('crop_apple_seedling', '/assets/crops/蘋果幼苗.png');
+    this.load.image('crop_apple_growing', '/assets/crops/蘋果成長中.png');
+    this.load.image('crop_apple_mature', '/assets/crops/蘋果成熟.png');
+    this.load.image('crop_apple_dry', '/assets/crops/蘋果營養不良.png');
+    this.load.image('crop_apple_withered', '/assets/crops/蘋果枯萎.png');
+    // 12 可可豆
+    this.load.image('crop_cocoa_seed', '/assets/crops/可可豆種子.png');
+    this.load.image('crop_cocoa_seedling', '/assets/crops/可可豆幼苗.png');
+    this.load.image('crop_cocoa_growing', '/assets/crops/可可亞成熟.png');
+    this.load.image('crop_cocoa_mature', '/assets/crops/可可亞果實.png');
+    this.load.image('crop_cocoa_dry', '/assets/crops/可可豆營養不良.png');
+    this.load.image('crop_cocoa_withered', '/assets/crops/可可亞枯萎.png');
+    // 13 棉花
+    this.load.image('crop_cotton_seed', '/assets/crops/棉花種子.png');
+    this.load.image('crop_cotton_seedling', '/assets/crops/棉花幼苗.png');
+    this.load.image('crop_cotton_growing', '/assets/crops/棉花成長中.png');
+    this.load.image('crop_cotton_mature', '/assets/crops/棉花成熟.png');
+    this.load.image('crop_cotton_dry', '/assets/crops/棉花營養不良.png');
+    this.load.image('crop_cotton_withered', '/assets/crops/棉花枯萎.png');
+    // 14 咖啡豆
+    this.load.image('crop_coffee_seed', '/assets/crops/咖啡豆種子.png');
+    this.load.image('crop_coffee_seedling', '/assets/crops/咖啡豆幼苗.png');
+    this.load.image('crop_coffee_growing', '/assets/crops/咖啡豆成長中.png');
+    this.load.image('crop_coffee_mature', '/assets/crops/咖啡豆成熟.png');
+    this.load.image('crop_coffee_dry', '/assets/crops/咖啡豆營養不良.png');
+    this.load.image('crop_coffee_withered', '/assets/crops/咖啡豆枯萎.png');
+    // 15 茶葉
+    this.load.image('crop_tea_seed', '/assets/crops/茶葉種子.png');
+    this.load.image('crop_tea_seedling', '/assets/crops/茶葉幼苗.png');
+    this.load.image('crop_tea_growing', '/assets/crops/茶葉成長中.png');
+    this.load.image('crop_tea_mature', '/assets/crops/茶葉成熟.png');
+    this.load.image('crop_tea_dry', '/assets/crops/茶葉營養不良.png');
+    this.load.image('crop_tea_withered', '/assets/crops/茶葉枯萎.png');
+
     this.load.image('icon_seed', '/assets/icon/icon_seed.png.png');
     this.load.image('icon_watering', '/assets/icon/icon_watering.png.png');
     this.load.image('icon_fertilizer', '/assets/icon/icon_fertilizer.png.png');
