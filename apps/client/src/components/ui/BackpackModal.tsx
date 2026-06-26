@@ -207,7 +207,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                     src={getInventoryIcon(item)}
                     alt={item.name}
                     className={item.sprite === '普通肥料.png' ? 'item-icon fertilizer-icon' : 'item-icon'}
-                    style={item.itemId === 5 ? { maxWidth: 46, maxHeight: 46, width: 'auto', height: 'auto', objectFit: 'contain', imageRendering: 'pixelated' } : {}}
+                    style={item.itemId === 5 ? { maxWidth: 50, maxHeight: 50, width: 'auto', height: 'auto', objectFit: 'contain', imageRendering: 'pixelated' } : {}}
 
 
                     onError={(e) => {
