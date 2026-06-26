@@ -2951,6 +2951,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
       const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
       const hasProducing = slots.some((s: any) => s.state === 'PRODUCING');
+      const producingSlots = slots.filter((s: any) => s.state === 'PRODUCING');
+      const minRemainingSec = producingSlots.length > 0
+        ? Math.min(...producingSlots.map((s: any) => s.remainingSec ?? 0))
+        : null;
       const canFeed = hasReadyToFeed && animalCount > 0;
       const feedBtnLabel = !hasReadyToFeed && hasReadyToCollect ? '請先收蛋' : (animalCount === 0 ? '無雞' : '餵食');
       const canCollect = collectableEggs > 0;
@@ -2972,7 +2976,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const container = panelEl.querySelector('#coop-status-container');
       if (!container) { console.warn('[PANEL REFRESH] container not found'); return; }
       // 重新渲染狀態文字
-      const html = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing });
+      const html = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing, minRemainingSec });
       container.innerHTML = html;
       // DOM 重建後必須重新 binding
       this.bindChickenCoopPanelEvents(panelEl);
@@ -2981,16 +2985,22 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 雞舍狀態區塊 HTML（供 refreshCoopPanelStatus 重複呼叫）──
   // canFeed / feedBtnLabel 由外部根據 slots state 計算後傳入
-  private buildCoopStatusHtml(state: { animalCount: number; babyCount: number; adultCount: number; feedStatus: 'fed' | 'none'; lastFedAt: number | null; eggCount: number; capacity: number; canFeed: boolean; feedBtnLabel: string; canCollect: boolean; hasReadyToCollect: boolean; hasProducing: boolean }) {
-    const { animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing } = state;
+  private buildCoopStatusHtml(state: { animalCount: number; babyCount: number; adultCount: number; feedStatus: 'fed' | 'none'; lastFedAt: number | null; eggCount: number; capacity: number; canFeed: boolean; feedBtnLabel: string; canCollect: boolean; hasReadyToCollect: boolean; hasProducing: boolean; minRemainingSec: number | null }) {
+    const { animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing, minRemainingSec } = state;
     const feedBtnDisabled = !canFeed || animalCount === 0;
     // 飼料狀態文字：PRODUCING > 可收蛋 > 已餵食 > 未餵食
     const feedStatusLabel = hasProducing ? '生產中' : (hasReadyToCollect ? '可收蛋' : (feedStatus === 'fed' ? '已餵食' : '未餵食'));
     const feedStatusColor = hasProducing ? '#1565C0' : (hasReadyToCollect ? '#E8A020' : (feedStatus === 'fed' ? '#2E7D32' : '#C0392B'));
     let countdownHtml = '';
-    const BABY_GROW_MS = 10 * 60 * 1000;
-    const ADULT_EGG_MS = 15 * 60 * 1000;
-    if (feedStatus === 'fed' && lastFedAt) {
+    // PRODUCING 時顯示 server 回傳的 remainingSec 倒計時
+    if (hasProducing && minRemainingSec !== null && minRemainingSec > 0) {
+      const mins = Math.floor(minRemainingSec / 60);
+      const secs = minRemainingSec % 60;
+      countdownHtml = `<div id="coop-countdown-text" style="font-size:12px;color:#1565C0;">最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}</div>`;
+    } else if (feedStatus === 'fed' && lastFedAt) {
+      // BABY 成長倒計時（保留既有邏輯）
+      const BABY_GROW_MS = 10 * 60 * 1000;
+      const ADULT_EGG_MS = 15 * 60 * 1000;
       const elapsed = Date.now() - lastFedAt;
       const adultRemaining = adultCount > 0 ? Math.max(0, ADULT_EGG_MS - elapsed) : 0;
       const babyRemaining = babyCount > 0 ? Math.max(0, BABY_GROW_MS - elapsed) : 0;
@@ -3118,35 +3128,41 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const BABY_GROW_MS = 10 * 60 * 1000;
     const ADULT_EGG_MS = 15 * 60 * 1000;
 
-    const processCoopTimer = () => {
-      const raw = localStorage.getItem('tlo_farm_chicken_coop');
-      if (!raw) return;
-      try {
-        const data = JSON.parse(raw);
-        if (data.feedingStatus !== 'fed' || !data.lastFedAt) return;
-        const elapsed = Date.now() - data.lastFedAt;
-        const animals: any[] = data.animals ?? [];
-        const babyCount = animals.filter((a: any) => a.stage === 'baby').length;
-        const adultCount = animals.filter((a: any) => a.stage === 'adult').length;
+    // ── 倒計時顯示：用 server remainingSec，不自己算時間──
+    let displayRemainingSec: number | null = minRemainingSec;
+    console.log('[COOP TIMER INIT]', { remainingSec: displayRemainingSec });
 
-        if (babyCount > 0 && elapsed >= BABY_GROW_MS) {
-          data.animals.forEach((a: any) => { if (a.stage === 'baby') a.stage = 'adult'; });
-          data.feedingStatus = 'none';
-          data.lastFedAt = null;
-          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(data));
-          this.renderChicksInCoop();
-          this.refreshCoopPanelStatus(panel);
+    const processCoopTimer = () => {
+      try {
+        const slots = this.coopChickenStatus?.slots ?? [];
+        const producingSlots = slots.filter((s: any) => s.state === 'PRODUCING');
+        const minSec = producingSlots.length > 0
+          ? Math.min(...producingSlots.map((s: any) => s.remainingSec ?? 0))
+          : null;
+        // 到 0 了：server 會更新狀態為 READY_TO_COLLECT
+        if (displayRemainingSec !== null && displayRemainingSec <= 1) {
+          console.log('[COOP TIMER DONE SYNC]', { previousRemaining: displayRemainingSec });
+          this.syncChickenCoopStatus().then(() => {
+            this.refreshCoopPanelStatus(panel);
+          });
+          displayRemainingSec = null;
           return;
         }
-        if (adultCount > 0 && elapsed >= ADULT_EGG_MS) {
-          data.eggCount = (data.eggCount ?? 0) + adultCount;
-          data.feedingStatus = 'none';
-          data.lastFedAt = null;
-          localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(data));
-          this.refreshCoopPanelStatus(panel);
-          return;
+        if (minSec !== null && minSec > 0) {
+          displayRemainingSec = minSec;
         }
-        this.refreshCoopPanelStatus(panel);
+        // 只遞減顯示用的計時器
+        if (displayRemainingSec !== null && displayRemainingSec > 0) {
+          displayRemainingSec--;
+          console.log('[COOP TIMER TICK]', { remainingSec: displayRemainingSec });
+          // 更新 countdownHtml 的顯示（不重建整個面板）
+          const countdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
+          if (countdownEl) {
+            const mins = Math.floor(displayRemainingSec / 60);
+            const secs = displayRemainingSec % 60;
+            countdownEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+          }
+        }
       } catch(e) {}
     };
 
@@ -3173,6 +3189,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         canCollect,
         hasReadyToCollect,
         hasProducing,
+        minRemainingSec: minRemainingSec ?? null,
       });
       this.bindChickenCoopPanelEvents(panel);
       console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
