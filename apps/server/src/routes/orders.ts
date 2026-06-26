@@ -392,11 +392,32 @@ router.post('/:id/complete', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '訂單尚未開始配送' });
     }
 
-    // 發放獎勵
-    await db.execute(
-      `UPDATE users SET gold = gold + ?, exp = exp + ? WHERE id = ?`,
-      [order.rewardCoins, order.rewardExp, userId]
+    // 發放獎勵（含升級計算，邏輯與 farm.ts harvest 一致）
+    const beforeResult = await db.execute(
+      `SELECT gold, exp, level FROM users WHERE id = ?`,
+      [userId]
     );
+    const before = beforeResult.rows?.[0];
+    if (!before) {
+      return res.status(404).json({ success: false, message: '用戶不存在' });
+    }
+    const oldLevel = before.level;
+    const oldExp = before.exp;
+    const rewardExp = order.rewardExp;
+    const newExp = oldExp + rewardExp;
+
+    const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
+    let newLevel = oldLevel;
+    while (newLevel < expForLevel.length && newExp >= expForLevel[newLevel]) {
+      newLevel++;
+    }
+    console.log('[ORDER LEVEL CHECK]', { userId, oldLevel, oldExp, rewardExp, newExp, newLevel });
+
+    await db.execute(
+      `UPDATE users SET gold = ?, exp = ?, level = ? WHERE id = ?`,
+      [before.gold + order.rewardCoins, newExp, newLevel, userId]
+    );
+    console.log('[ORDER LEVEL UPDATED]', { userId, level: newLevel, exp: newExp });
 
     // 標記為完成
     await db.execute(
