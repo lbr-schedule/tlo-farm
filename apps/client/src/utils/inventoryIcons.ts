@@ -28,7 +28,7 @@ export const fruitIconById: Record<number, string> = {
   2: '/assets/icon/cropped/icon_fruit_corn.png',
   3: '/assets/icon/cropped/icon_fruit_carrot.png',  // 紅蘿蔔
   4: '/assets/icon/cropped/icon_fruit_potato.png',
-  5: '/assets/crops/甘蔗果實_icon.png',   // 甘蔗果實（背包專用128x128置中）
+  5: '/assets/crops/甘蔗果實_icon_fixed.png',   // 甘蔗果實（背包專用128x128置中，四邊留白）
   6: '/assets/icon/cropped/icon_fruit.png',   // 南瓜 (無專用)
   7: '/assets/icon/cropped/icon_fruit.png',   // 胡蘿蔔 (無專用)
   8: '/assets/icon/cropped/icon_fruit.png',   // 藍莓 (無專用)
