@@ -207,6 +207,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                     src={getInventoryIcon(item)}
                     alt={item.name}
                     className={item.sprite === '普通肥料.png' ? 'item-icon fertilizer-icon' : 'item-icon'}
+                    style={item.itemId === 5 ? { objectPosition: '22% 50%' } : {}}
 
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = FALLBACK_ICON;
