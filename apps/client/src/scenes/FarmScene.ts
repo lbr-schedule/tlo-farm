@@ -1849,21 +1849,24 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         this.showFertilizeSuccess(index);
       } else {
         fertilizerText.destroy();
-        // 顯示錯誤 — 使用 game-toast 系統
         const msg = data.message || '';
-        if (msg.includes('肥料不足') || msg.includes('沒有足夠的肥料')) {
-          this.events.emit('game-toast', '肥料不足，請先購買普通肥料');
-        } else {
-          this.events.emit('game-toast', data.message || '施肥失敗');
-        }
+        const toastMsg = (msg.includes('肥料不足') || msg.includes('沒有足夠的肥料'))
+          ? '肥料不足，請先購買普通肥料'
+          : (data.message || '施肥失敗');
+        console.log('[FERTILIZE ERROR MESSAGE]', toastMsg);
+        console.log('[TOAST METHOD USED]', 'events.emit(game-toast)');
+        console.log('[TOAST DISPATCHED]', toastMsg);
+        this.events.emit('game-toast', toastMsg);
       }
     } catch (err: any) {
       console.error('[FarmScene] 施肥錯誤', err);
-      // 尝试从错误中提取 server 返回的 message
       let msg = '施肥失敗，請稍後再試';
       if (err?.message) msg = err.message;
       else if (err?.body?.message) msg = err.body.message;
       else if (typeof err === 'string') msg = err;
+      console.log('[FERTILIZE ERROR MESSAGE]', msg);
+      console.log('[TOAST METHOD USED]', 'events.emit(game-toast)');
+      console.log('[TOAST DISPATCHED]', msg);
       this.events.emit('game-toast', msg);
     }
   }
