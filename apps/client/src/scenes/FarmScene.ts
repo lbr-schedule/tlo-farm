@@ -320,12 +320,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.load.image('crop_strawberry_dry', '/assets/crops/草莓營養不良.png');
     this.load.image('crop_strawberry_withered', '/assets/crops/草莓枯萎.png');
     // 7 番茄
-    this.load.image('crop_tomato_seed', '/assets/crops/蕃茄種子.png');
-    this.load.image('crop_tomato_seedling', '/assets/crops/蕃茄幼苗.png');
-    this.load.image('crop_tomato_growing', '/assets/crops/蕃茄成長中.png');
-    this.load.image('crop_tomato_mature', '/assets/crops/蕃茄成熟.png');
+    this.load.image('crop_tomato_seed', '/assets/crops/番茄種子.png');
+    this.load.image('crop_tomato_seedling', '/assets/crops/番茄幼苗.png');
+    this.load.image('crop_tomato_growing', '/assets/crops/番茄成熟.png');
+    this.load.image('crop_tomato_mature', '/assets/crops/番茄果實.png');
     this.load.image('crop_tomato_dry', '/assets/crops/番茄營養不良.png');
-    this.load.image('crop_tomato_withered', '/assets/crops/蕃茄枯萎.png');
+    this.load.image('crop_tomato_withered', '/assets/crops/番茄枯萎.png');
     // 8 南瓜
     this.load.image('crop_pumpkin_seed', '/assets/crops/南瓜種子.png');
     this.load.image('crop_pumpkin_seedling', '/assets/crops/南瓜幼苗.png');
@@ -357,10 +357,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // 12 可可豆
     this.load.image('crop_cocoa_seed', '/assets/crops/可可豆種子.png');
     this.load.image('crop_cocoa_seedling', '/assets/crops/可可豆幼苗.png');
-    this.load.image('crop_cocoa_growing', '/assets/crops/可可亞成熟.png');
-    this.load.image('crop_cocoa_mature', '/assets/crops/可可亞果實.png');
+    this.load.image('crop_cocoa_growing', '/assets/crops/可可豆成熟.png');
+    this.load.image('crop_cocoa_mature', '/assets/crops/可可豆果實.png');
     this.load.image('crop_cocoa_dry', '/assets/crops/可可豆營養不良.png');
-    this.load.image('crop_cocoa_withered', '/assets/crops/可可亞枯萎.png');
+    this.load.image('crop_cocoa_withered', '/assets/crops/可可豆枯萎.png');
     // 13 棉花
     this.load.image('crop_cotton_seed', '/assets/crops/棉花種子.png');
     this.load.image('crop_cotton_seedling', '/assets/crops/棉花幼苗.png');
