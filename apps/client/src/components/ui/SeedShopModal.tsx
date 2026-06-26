@@ -547,6 +547,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             style={{
                               width: crop.id === 5 ? 112 : 56,
                               height: crop.id === 5 ? 112 : 56,
+                              marginLeft: crop.id === 5 ? 6 : 0,
                               objectFit: 'contain',
                               imageRendering: 'pixelated',
                               display: 'block',
