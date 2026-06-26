@@ -1553,9 +1553,19 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       const data = await res.json();
       if (data.success) {
-        // 刷新背包(收成作物進背包)
+        console.log('[HARVEST FLOATING TEXT SHOWN]', {
+          cropName: data.harvest.cropName,
+          harvestYield: data.harvest.harvestYield,
+          exp: expReward,
+        });
+        // ── 第一時間顯示飄字（不等背景同步）──
+        this.showHarvestFloatingText(index, data.harvest.cropName, data.harvest.harvestYield, expReward);
+
+        // ── 背景同步（不等飄字完成）──
+        console.log('[HARVEST BACKGROUND SYNC START]');
+        // 刷新背包
         backpackSystem.fetchAll();
-        // userUpdated 包含 gold/exp/level,harvest 包含 cropName 和 earned 值
+        // userUpdated 事件
         this.events.emit('userUpdated', data.user);
         this.events.emit('harvest', {
           gold: data.harvest.goldEarned,
@@ -1563,8 +1573,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           cropName: data.harvest.cropName,
           harvestYield: data.harvest.harvestYield,
         });
-        // ── API 回傳後顯示飄字（帶正確 harvestYield）──
-        this.showHarvestFloatingText(index, data.harvest.cropName, data.harvest.harvestYield, expReward);
+        console.log('[HARVEST BACKGROUND SYNC DONE]');
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);
         // API 失敗:重新讀取農場狀態

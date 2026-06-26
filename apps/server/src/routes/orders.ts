@@ -141,6 +141,13 @@ function generateOrder(userId: number, playerLevel: number) {
     };
   });
 
+  console.log('[ORDER GENERATE DEBUG]', {
+    userId,
+    playerLevel,
+    allowedCrops: unlockedCrops.map(c => ({ id: c.id, name: c.name, requiredLevel: c.requiredLevel })),
+    generatedRequirements: requirements.map(r => ({ itemName: r.itemName, quantity: r.quantity })),
+  });
+
   // 計算作物總價值
   const totalCropValue = requirements.reduce((sum, r) => sum + r.totalValue, 0);
   
@@ -289,10 +296,13 @@ router.post('/:id/deliver', async (req: AuthRequest, res: Response) => {
       '棉花': 13, '咖啡豆': 14, '茶葉': 15,
     };
 
+    const missingItems: string[] = [];
+    const inventoryChecks: Record<string, { required: number; have: number }> = {};
+
     for (const req of requirements) {
       const cropId = cropNameMap[req.itemName];
       if (!cropId) {
-        console.warn(`[DELIVER] unknown crop: ${req.itemName}`);
+        console.warn(`[ORDER DELIVER] unknown crop: ${req.itemName}`);
         return res.status(400).json({ success: false, message: `無法識別的作物：${req.itemName}` });
       }
 
@@ -301,12 +311,26 @@ router.post('/:id/deliver', async (req: AuthRequest, res: Response) => {
         [userId, cropId]
       );
       const invItem = invResult.rows?.[0];
-      if (!invItem || invItem.amount < req.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: '物品不足'
-        });
+      const have = invItem?.amount ?? 0;
+      inventoryChecks[req.itemName] = { required: req.quantity, have };
+      if (have < req.quantity) {
+        missingItems.push(req.itemName);
       }
+    }
+
+    console.log('[ORDER DELIVER CHECK]', {
+      orderId,
+      userId,
+      requirements: requirements.map(r => ({ itemName: r.itemName, quantity: r.quantity })),
+      inventoryChecks,
+    });
+
+    if (missingItems.length > 0) {
+      console.warn('[ORDER DELIVER BLOCKED]', { missingItems, orderId });
+      return res.status(400).json({
+        success: false,
+        message: '物品不足'
+      });
     }
 
     // 扣除背包物品

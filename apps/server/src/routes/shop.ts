@@ -34,6 +34,12 @@ router.get('/items', async (req: AuthRequest, res: Response) => {
       [playerLevel]
     );
     const crops = cropsResult.rows || [];
+    console.log('[SHOP SEED FILTER DEBUG]', {
+      userId,
+      playerLevel,
+      sql: `WHERE required_level <= ${playerLevel}`,
+      returnedCrops: crops.map(c => ({ id: c.id, name: c.nameZhTw, requiredLevel: c.requiredLevel })),
+    });
 
     // 讀取道具（包括普通肥料）
     const itemsResult = await db.execute(
