@@ -2689,20 +2689,24 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ── 餵食按鈕 handler ──
   private async handleFeedChickenCoop(panelEl: HTMLDivElement) {
     console.log('[FEED BUTTON CLICKED]');
-    // 用 API slots 確認是否有雞可以餵
-    const slots = this.coopChickenStatus?.slots ?? [];
-    const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
-    const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
-    if (!hasReadyToFeed) {
-      if (hasReadyToCollect) {
-        this.events.emit('game-toast', '請先收蛋！');
-      } else {
-        this.events.emit('game-toast', '沒有雞需要餵食');
-      }
-      return;
-    }
+    // 第一幀立即更新按鈕狀態（同步）
+    const feedBtn = document.getElementById('coop-feed-btn');
+    if (feedBtn) { feedBtn.disabled = true; feedBtn.textContent = '餵食中...'; }
 
     try {
+      // 用 API slots 確認是否有雞可以餵
+      const slots = this.coopChickenStatus?.slots ?? [];
+      const hasReadyToFeed = slots.some((s: any) => s.state === 'READY_TO_FEED');
+      const hasReadyToCollect = slots.some((s: any) => s.state === 'READY_TO_COLLECT');
+      if (!hasReadyToFeed) {
+        if (hasReadyToCollect) {
+          this.events.emit('game-toast', '請先收蛋！');
+        } else {
+          this.events.emit('game-toast', '沒有雞需要餵食');
+        }
+        return;
+      }
+
       console.log('[FEED API REQUEST] /api/animals/chicken-coop/feed-all');
       const res = await authFetch('/api/animals/chicken-coop/feed-all', {
         method: 'POST',
@@ -2731,19 +2735,27 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         backpackFeedItemId: feedItem?.itemId,
         backpackFeedAmount: feedItem?.quantity ?? feedItem?.amount ?? feedItem?.count,
       });
-      this.refreshCoopPanelStatus(panelEl);
     } catch (err) {
       console.warn('[FEED-ALL API ERROR]', err);
+      this.events.emit('game-toast', '餵食失敗，請稍後再試');
+    } finally {
+      // 最後一步：重建面板（按鈕狀態會被 refreshCoopPanelStatus 正確還原）
+      this.refreshCoopPanelStatus(panelEl);
     }
   }
 
   // ── 收雞蛋按鈕 handler ──
   private async handleCollectEggs(panelEl: HTMLDivElement) {
     console.log('[COLLECT BUTTON CLICKED]');
+    // 第一幀立即更新按鈕狀態（同步）
+    const collectBtn = document.getElementById('coop-collect-eggs-btn');
+    if (collectBtn) { collectBtn.disabled = true; collectBtn.textContent = '收集中...'; }
+
     // 用 API slots 確認是否有蛋可收
     const slots = this.coopChickenStatus?.slots ?? [];
     const readySlots = slots.filter((s: any) => s.state === 'READY_TO_COLLECT');
     if (readySlots.length === 0) {
+      if (collectBtn) { collectBtn.disabled = false; collectBtn.textContent = '收雞蛋'; }
       this.events.emit('game-toast', '目前沒有可收雞蛋');
       return;
     }
@@ -2781,9 +2793,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         resultEggBefore: result.eggBefore,
         resultEggAfter: result.eggAfter,
       });
-      this.refreshCoopPanelStatus(panelEl);
     } catch (err) {
       console.warn('[COLLECT-ALL API ERROR]', err);
+      this.events.emit('game-toast', '收蛋失敗，請稍後再試');
+    } finally {
+      // 最後一步：重建面板（按鈕狀態會被 refreshCoopPanelStatus 正確還原）
+      this.refreshCoopPanelStatus(panelEl);
     }
   }
 
