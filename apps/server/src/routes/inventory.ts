@@ -15,8 +15,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const { type, page = 1, limit = 20 } = req.query;
 
     // 取得背包物品（使用 raw SQL）
+    // itemId=9 是舊雞蛋殘留，API 直接排除不回傳
     const itemsResult = await db.execute(
-      `SELECT id, user_id as userId, item_type as itemType, item_id as itemId, amount FROM inventories WHERE user_id = ?`,
+      `SELECT id, user_id as userId, item_type as itemType, item_id as itemId, amount FROM inventories WHERE user_id = ? AND NOT (item_type = 'livestock' AND item_id = 9)`,
       [userId]
     );
 
