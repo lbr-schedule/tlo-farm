@@ -7,11 +7,11 @@ const router = Router();
 const LEVEL_UNLOCKS: Record<number, { crops: string[]; items: string[]; buildings: string[] }> = {
   // Lv5 - 雞舍
   5: { crops: [], items: [], buildings: ['雞舍'] },
-  // Lv8 - 甘蔗種子、農地擴充、花盆裝飾
+  // Lv8 - 農地可擴充（依 GDD）
   8: {
-    crops: ['甘蔗種子'],
+    crops: [],
     items: [],
-    buildings: ['農地可擴充 12 → 14', '花盆裝飾'],
+    buildings: ['農地可擴充 10 → 12', '擴充費用：1800 金幣', '建築材料：無'],
   },
   // Lv10 - 食品工坊
   10: { crops: [], items: [], buildings: ['食品工坊'] },

@@ -741,7 +741,7 @@ export default function GamePage() {
         onClick={() => {
           setPendingLevelUp(displayUser?.level ?? 6);
           setPendingLevelUnlocks(displayUser?.level === 8
-            ? ['甘蔗種子', '農地可擴充 12 → 14', '花盆裝飾']
+            ? ['農地可擴充 10 → 12', '擴充費用：1800 金幣', '建築材料：無']
             : []);
         }}
         style={{ position: 'fixed', bottom: 80, right: 16, zIndex: 9999, background: '#ff6b00', color: '#fff', border: '2px solid #fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }}

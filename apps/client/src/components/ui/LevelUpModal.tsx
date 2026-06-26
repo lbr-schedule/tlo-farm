@@ -44,26 +44,6 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
         transition: 'opacity 0.3s',
       }}>
 
-        {/* X 關閉按鈕 */}
-        <button
-          onClick={handleClose}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '12px',
-            background: 'none',
-            border: 'none',
-            color: '#F5D76E',
-            fontSize: '24px',
-            cursor: 'pointer',
-            lineHeight: 1,
-            padding: '4px 8px',
-            fontWeight: 'bold',
-          }}
-        >
-          ✕
-        </button>
-
         {/* 星星裝飾 */}
         <div style={{ fontSize: '48px', marginBottom: '10px', animation: 'starSpin 1s ease-in-out infinite' }}>
           ⭐⭐⭐
@@ -112,7 +92,7 @@ export default function LevelUpModal({ newLevel, onClose, unlocks = [] }: LevelU
               <div style={{ marginBottom: '10px', color: '#F5D76E', fontSize: '16px' }}>已解鎖：</div>
               {unlocks.map((item, i) => (
                 <div key={i} style={{ fontSize: '15px', marginBottom: '6px', color: '#d4c4a8' }}>
-                  • {item}
+                  ・{item}
                 </div>
               ))}
             </div>
