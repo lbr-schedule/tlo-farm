@@ -2817,7 +2817,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           if (tickEl) {
             const mins = Math.floor(this._coopCountdownRemaining / 60);
             const secs = this._coopCountdownRemaining % 60;
-            tickEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            tickEl.textContent = `收蛋倒數：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
             console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining, textBefore, textAfter: tickEl.textContent });
           } else {
             console.warn('[COOP TIMER DOM MISSING]', { panelInDoc: panelEl && document.body.contains(panelEl), textBefore });
@@ -3055,7 +3055,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (hasProducing && minRemainingSec !== null && minRemainingSec > 0) {
       const mins = Math.floor(minRemainingSec / 60);
       const secs = minRemainingSec % 60;
-      countdownHtml = `<div id="coop-countdown-text" style="font-size:12px;color:#1565C0;">最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}</div>`;
+      countdownHtml = `<div id="coop-countdown-text" style="font-size:12px;color:#1565C0;">收蛋倒數：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}</div>`;
     } else if (feedStatus === 'fed' && lastFedAt) {
       // BABY 成長倒計時（保留既有邏輯）
       const BABY_GROW_MS = 10 * 60 * 1000;
