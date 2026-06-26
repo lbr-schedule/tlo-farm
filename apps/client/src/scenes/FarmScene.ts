@@ -2777,6 +2777,55 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (producingSlots.length === 0) return null;
     return Math.max(0, Math.min(...producingSlots.map((s: any) => s.remainingSec as number)));
   }
+
+  // ── 雞舍倒計時計時器（統一管理，避免重複 timer）──
+  // 麵板關閉時及 refresh 時都會先清除，外部只負責叫用這個 method 啟動計時器
+  private startCoopCountdownTimer() {
+    // 先清除舊計時器
+    if (this._coopCountdownInterval !== null) {
+      clearInterval(this._coopCountdownInterval);
+      this._coopCountdownInterval = null;
+    }
+    this._coopCountdownRemaining = this.getCoopMinRemainingSec();
+    console.log('[COOP TIMER INIT]', {
+      remainingSec: this._coopCountdownRemaining,
+      countdownElExists: !!(this._coopPanelEl?.querySelector('#coop-countdown-text')),
+      panelInDoc: this._coopPanelEl && document.body.contains(this._coopPanelEl),
+    });
+    // 沒有 PRODUCING slot 不啟動計時器
+    if (this._coopCountdownRemaining === null || this._coopCountdownRemaining <= 0) return;
+
+    this._coopCountdownInterval = window.setInterval(() => {
+      try {
+        if (this._coopCountdownRemaining === null || this._coopCountdownRemaining <= 1) {
+          console.log('[COOP TIMER DONE SYNC]', { previousRemaining: this._coopCountdownRemaining });
+          this._coopCountdownRemaining = null;
+          if (this._coopCountdownInterval !== null) {
+            clearInterval(this._coopCountdownInterval);
+            this._coopCountdownInterval = null;
+          }
+          this.syncChickenCoopStatus().then(() => {
+            this.refreshCoopPanelStatus(this._coopPanelEl!);
+          });
+          return;
+        }
+        if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining > 0) {
+          this._coopCountdownRemaining--;
+          const panelEl = this._coopPanelEl;
+          const tickEl = panelEl?.querySelector('#coop-countdown-text') as HTMLDivElement | null;
+          const textBefore = tickEl?.textContent ?? 'NOT FOUND';
+          if (tickEl) {
+            const mins = Math.floor(this._coopCountdownRemaining / 60);
+            const secs = this._coopCountdownRemaining % 60;
+            tickEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining, textBefore, textAfter: tickEl.textContent });
+          } else {
+            console.warn('[COOP TIMER DOM MISSING]', { panelInDoc: panelEl && document.body.contains(panelEl), textBefore });
+          }
+        }
+      } catch(e) {}
+    }, 1000);
+  }
   private _coopListenersInitialized: boolean = false;
   // 用於存 panel DOM 引用，讓 class method 也能呼叫 re-binding
   private _coopPanelEl: HTMLDivElement | null = null;
@@ -2863,6 +2912,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     } finally {
       // 最後一步：重建面板（按鈕狀態會被 refreshCoopPanelStatus 正確還原）
       this.refreshCoopPanelStatus(panelEl);
+      // 重新計算倒計時並啟動（餵食後 slot 已變 PRODUCING）
+      this.startCoopCountdownTimer();
     }
   }
 
@@ -3132,88 +3183,27 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     panel.appendChild(statusContainer);
     panel.appendChild(buttonContainer);
 
-    // ── 計時器邏輯（每 tick 都呼叫 this.refreshCoopPanelStatus）──
-    const BABY_GROW_MS = 10 * 60 * 1000;
-    const ADULT_EGG_MS = 15 * 60 * 1000;
-
-    // ── 倒計時顯示：用 server remainingSec，不自己算時間──
-    this._coopCountdownRemaining = this.getCoopMinRemainingSec();
-    // 確認計時 DOM 元素存在後才啟動
-    const initCountdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
-    console.log('[COOP TIMER INIT]', {
-      remainingSec: this._coopCountdownRemaining,
-      countdownElExists: !!initCountdownEl,
-      panelInDoc: document.body.contains(panel),
-    });
-    // 供 initPanel closure 使用
-    const minRemainingSec = this._coopCountdownRemaining;
-
-    const processCoopTimer = () => {
-      try {
-        // 到 0 了：server 會更新狀態為 READY_TO_COLLECT
-        if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining <= 1) {
-          console.log('[COOP TIMER DONE SYNC]', { previousRemaining: this._coopCountdownRemaining });
-          this._coopCountdownRemaining = null;
-          if (this._coopCountdownInterval !== null) {
-            clearInterval(this._coopCountdownInterval);
-            this._coopCountdownInterval = null;
-          }
-          this.syncChickenCoopStatus().then(() => {
-            this.refreshCoopPanelStatus(panel);
-          });
-          return;
-        }
-        // 遞減顯示（每次 tick 都重新查 DOM，避免 refreshCoopPanelStatus 重建後抓到已銷毀的舊元素）
-        if (this._coopCountdownRemaining !== null && this._coopCountdownRemaining > 0) {
-          this._coopCountdownRemaining--;
-          const tickCountdownEl = panel.querySelector('#coop-countdown-text') as HTMLDivElement | null;
-          const textBefore = tickCountdownEl?.textContent ?? 'NOT FOUND';
-          if (tickCountdownEl) {
-            const mins = Math.floor(this._coopCountdownRemaining / 60);
-            const secs = this._coopCountdownRemaining % 60;
-            tickCountdownEl.textContent = `最快可收蛋：${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
-            console.log('[COOP TIMER TICK]', { remainingSec: this._coopCountdownRemaining, textBefore, textAfter: tickCountdownEl.textContent });
-          } else {
-            console.warn('[COOP TIMER DOM MISSING]', {
-              panelInDoc: document.body.contains(panel),
-              textBefore,
-            });
-          }
-        }
-      } catch(e) {}
-    };
-
-    const startCountdownLoop = () => {
-      if (this._coopCountdownRemaining === null) return; // 沒有 PRODUCING slot 不啟動
-      this._coopCountdownInterval = window.setInterval(() => {
-        processCoopTimer();
-      }, 1000);
-    };
-
     // ── 首次建立面板：使用 API slots 渲染狀態──
-    const initPanel = () => {
-      // 直接使用 openChickenCoopPanel 閉包中的 API slots 資料
-      // animalCount / capacity / babyCount / adultCount 全都來自 this.coopChickenStatus.slots
-      statusContainer.innerHTML = this.buildCoopStatusHtml({
-        animalCount: apiAnimalCount,
-        babyCount: apiBabyCount,
-        adultCount: apiAdultCount,
-        feedStatus,
-        lastFedAt,
-        eggCount,
-        capacity: apiCapacity,
-        canFeed,
-        feedBtnLabel,
-        canCollect,
-        hasReadyToCollect,
-        hasProducing,
-        minRemainingSec: minRemainingSec ?? null,
-      });
-      this.bindChickenCoopPanelEvents(panel);
-      console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
-    };
-    initPanel();
-    startCountdownLoop();
+    // animalCount / capacity / babyCount / adultCount 全都來自 this.coopChickenStatus.slots
+    statusContainer.innerHTML = this.buildCoopStatusHtml({
+      animalCount: apiAnimalCount,
+      babyCount: apiBabyCount,
+      adultCount: apiAdultCount,
+      feedStatus,
+      lastFedAt,
+      eggCount,
+      capacity: apiCapacity,
+      canFeed,
+      feedBtnLabel,
+      canCollect,
+      hasReadyToCollect,
+      hasProducing,
+      minRemainingSec: this.getCoopMinRemainingSec(),
+    });
+    this.bindChickenCoopPanelEvents(panel);
+    console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
+    // 面板 DOM 建立完成後，用統一計時器啟動倒計時
+    this.startCoopCountdownTimer();
     this._coopListenersInitialized = true;
 
     // ── 確保面板進 DOM ──
