@@ -634,7 +634,7 @@ export default function GamePage() {
             <div className="pip-name">{displayUser?.nickname ?? displayUser?.username ?? displayUser?.name ?? '玩家'}</div>
             <div className="pip-title" style={{ color: displayUser?.title ? '#D8B04A' : '#9A8268' }}>{displayUser?.title ? `稱號：${displayUser.title}` : '尚未設定稱號'}</div>
             <div className="pip-level">Lv.{displayUser?.level ?? 1}</div>
-            <div className="pip-exp-label">{displayExp} / {displayMax}</div>
+            <div className="pip-exp-label">{totalExp} / {nextLevelBaseExp}</div>
             <div className="pip-exp-bar-bg">
               <div className="pip-exp-bar-fill" style={{ width: `${expPercent.toFixed(1)}%` }} />
             </div>
@@ -856,7 +856,7 @@ export default function GamePage() {
                   <div style={{width:'100%',height:'7px',background:'#E8DCC4',border:'2px solid #4A2D16',overflow:'hidden'}}>
                     <div style={{width:`${expPercent.toFixed(1)}%`,height:'100%',background:'repeating-linear-gradient(90deg,#63C9FF 0px,#63C9FF 4px,#58E0C1 4px,#58E0C1 8px,#3FD7A3 8px,#3FD7A3 12px)',transition:'width 0.3s'}} />
                   </div>
-                  <div style={{fontSize:'10px',color:'#7A6A59',marginTop:'1px'}}>{displayExp} / {displayMax}</div>
+                  <div style={{fontSize:'10px',color:'#7A6A59',marginTop:'1px'}}>{totalExp} / {nextLevelBaseExp}</div>
                 </div>
               </div>
             </div>
