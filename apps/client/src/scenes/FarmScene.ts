@@ -955,25 +955,19 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmBottom = this.farmStartY + farmGridH;
     const SIDE_GAP = 12;
 
-    // 雞舍範圍（2×2 tile）
-    let coopX1 = -99999, coopY1 = -99999, coopX2 = -99999, coopY2 = -99999;
-    if (this.chickenCoopPlaced) {
-      coopX1 = this.farmStartX + this.chickenCoopTileX * this.FARM_SIZE;
-      coopY1 = this.farmStartY + this.chickenCoopTileY * this.FARM_SIZE;
-      coopX2 = coopX1 + this.FARM_SIZE * 2;
-      coopY2 = coopY1 + this.FARM_SIZE * 2;
-    }
+    // 雞舍範圍：直接用 sprite.getBounds()（真實顯示範圍）
+    const coopBounds = this.chickenCoopSprite?.getBounds();
 
     // 優先放農地群右側
     let popupX = farmRight + SIDE_GAP;
     let popupY = this.farmStartY + (farmGridH - POPUP_H) / 2; // 垂直居中於農地群
 
-    // 右側超出 或 與雞舍重疊 → 改放農地群下方
+    // 右側超出 或 與雞舍 sprite 重疊 → 改放農地群下方
     const popupRight = popupX + POPUP_W;
     const popupBottom = popupY + POPUP_H;
-    const coopOverlaps = this.chickenCoopPlaced &&
-      popupX < coopX2 && popupRight > coopX1 &&
-      popupY < coopY2 && popupBottom > coopY1;
+    const coopOverlaps = coopBounds &&
+      popupX < coopBounds.right && popupRight > coopBounds.left &&
+      popupY < coopBounds.bottom && popupBottom > coopBounds.top;
 
     if (popupRight > canvasWidth - MARGIN || coopOverlaps) {
       popupX = this.farmStartX;
