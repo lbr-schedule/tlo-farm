@@ -517,6 +517,8 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
           <div style={{ textAlign: 'center', padding: '40px', color: '#5C3D2E' }}>載入中...</div>
         ) : (
           <>
+            <style>{`.shop-scroll::-webkit-scrollbar{width:12px}.shop-scroll::-webkit-scrollbar-track{background:#E8D6B5;border:2px solid #5C3D2E}.shop-scroll::-webkit-scrollbar-thumb{background:#7A4A22;border:2px solid #5C3D2E;border-radius:2px}.shop-scroll::-webkit-scrollbar-thumb:hover{background:#8B5A2B}`}</style>
+            <div className="shop-scroll" style={{overflowY:'auto',maxHeight:'430px'}}>
             {/* 種子分頁 */}
             {activeTab === 'seeds' && (
               <>
@@ -853,6 +855,7 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                 })}
               </div>
             )}
+            </div>
           </>
         )}
       </div>
