@@ -1028,7 +1028,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       // 種子圖示（維持大小 36x36）
       const iconKey = crop.icon || cropDetailsCache.find((c: any) => c.id === crop.id)?.icon || '';
       if (iconKey) {
-        const icon = this.add.image(24, rowY + ROW_H / 2, iconKey);
+        const icon = this.add.image(22, rowY + ROW_H / 2, iconKey);
         icon.setDisplaySize(36, 36);
         icon.setOrigin(0.5, 0.5);
         icon.setAlpha(alpha);
@@ -1037,10 +1037,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }
 
       // 種子名稱
-      const nameText = this.add.text(46, rowY + ROW_H / 2, crop.nameZhTw, {
+      const nameText = this.add.text(14, rowY + ROW_H / 2, crop.nameZhTw, {
         fontSize: '13px',
         fontFamily: "'Cubic 11', sans-serif",
         color: disabled ? '#888888' : '#FFFFFF',
+        align: 'left',
       });
       nameText.setOrigin(0, 0.5);
       nameText.setAlpha(alpha);
