@@ -944,7 +944,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // ── 背景 ──
     const bg = this.add.graphics();
-    bg.fillStyle(0x3d2518, 0.95);
+    bg.fillStyle(0x3d2518, 0.65);
     bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
     bg.lineStyle(2, 0x8B4513, 1);
     bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
