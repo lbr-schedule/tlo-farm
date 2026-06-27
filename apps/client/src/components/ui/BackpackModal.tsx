@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import PixelWindow from './PixelWindow';
 import { backpackSystem, BackpackItem } from '../../systems/BackpackSystem';
 import { getInventoryIcon, FALLBACK_ICON } from '../../utils/inventoryIcons';
@@ -20,6 +20,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
   const [activeTab, setActiveTab] = useState<'seed' | 'crop' | 'livestock' | 'item'>('crop');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalUsed, setTotalUsed] = useState(0);
 
   // ── ESC 鍵關閉 ──
   useEffect(() => {
@@ -42,6 +43,14 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
       setItems(list);
       setLoading(state.loading);
       setTotalPages(Math.max(1, Math.ceil(list.length / 10)));
+      // 計算所有分頁中 amount > 0 的物品總數
+      const all = [
+        ...state.seeds,
+        ...state.crops,
+        ...state.livestock.filter(i => i.itemId !== 2),
+        ...state.items,
+      ];
+      setTotalUsed(all.filter(i => (i.amount ?? 0) > 0).length);
     });
     backpackSystem.fetchAll();
     return unsub;
@@ -141,6 +150,11 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
           <PixelButton onClick={() => { setActiveTab('item'); setPage(1); }} disabled={activeTab === 'item'}>
             道具
           </PixelButton>
+        </div>
+
+        {/* 容量顯示（固定不滑動） */}
+        <div style={{ fontSize: '12px', color: '#8B6914', marginBottom: '10px', flexShrink: 0, textAlign: 'right' }}>
+          容量：{totalUsed} / 50
         </div>
 
         {/* 訊息（固定不滑動） */}
