@@ -128,6 +128,9 @@ router.get('/plots', async (req: AuthRequest, res: Response) => {
     const level = user.level ?? 1;
     const gold = user.gold ?? 0;
     const levelAllowedMax = getMaxPlotForLevel(level);
+
+    // 回傳 actual level 方便前端顯示
+    void level; // 已用於 levelAllowedMax
     const nextRule = getNextUnlockRule(plotCount);
 
     // 檢查材料是否足夠
@@ -169,6 +172,7 @@ router.get('/plots', async (req: AuthRequest, res: Response) => {
 
     return res.json({
       success: true,
+      level,
       plotCount,
       levelAllowedMax,
       gold,
