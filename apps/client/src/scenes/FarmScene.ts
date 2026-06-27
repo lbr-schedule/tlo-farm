@@ -944,6 +944,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
     bg.lineStyle(2, 0x8B4513, 1);
     bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
+    bg.setDepth(200);
     this.seedPopup.add(bg);
 
     // ── 標題 ──
@@ -954,6 +955,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0);
+    title.setDepth(201);
     this.seedPopup.add(title);
 
     // ── X 關閉按鈕 ──
@@ -976,7 +978,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       fontStyle: 'bold',
     });
     closeText.setOrigin(0.5, 0.5);
-    closeBtn.setDepth(1);
+    closeBtn.setDepth(203);
     this.seedPopup.add(closeText);
 
     // ── 作物清單：改為依背包實際持有種子顯示（不再寫死前4種）──
@@ -1000,6 +1002,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       rowBg.fillStyle(disabled ? 0x333333 : 0x5C3D2E, disabled ? 0.5 : 0.8);
       rowBg.fillRoundedRect(10, rowY, POPUP_W - 20, ROW_H - 6, 6);
       rowBg.setAlpha(alpha);
+      rowBg.setDepth(201);
       this.seedPopup.add(rowBg);
 
       // 種子名稱(左側)
@@ -1010,6 +1013,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       nameText.setOrigin(0, 0.5);
       nameText.setAlpha(alpha);
+      nameText.setDepth(202);
       this.seedPopup.add(nameText);
 
       // 數量(右側)
@@ -1021,6 +1025,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       amountText.setOrigin(1, 0.5);
       amountText.setAlpha(alpha);
+      amountText.setDepth(202);
       this.seedPopup.add(amountText);
 
       // 成長時間(下方小字)
@@ -1032,6 +1037,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         });
         timeText.setOrigin(0, 0.5);
         timeText.setAlpha(alpha);
+        timeText.setDepth(202);
         this.seedPopup.add(timeText);
       }
 
@@ -1049,6 +1055,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
                 this.clearAllPopups();
         this.plantCrop(index, crop.id);
       });
+      hitArea.setDepth(202);
       this.seedPopup.add(hitArea);
     });
   }
