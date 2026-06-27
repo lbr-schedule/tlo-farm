@@ -950,8 +950,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.seedHighlight.setDepth(4999);
     console.log('[SEED HIGHLIGHT DEBUG]', {
       tileIndex: index,
-      stateX: state?.x,
-      stateY: state?.y,
       tileWorldX: _x,
       tileWorldY: _y,
       highlightParent: 'scene',
