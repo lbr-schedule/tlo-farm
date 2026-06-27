@@ -945,10 +945,44 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     hl.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
     hl.setDepth(150);
 
-    // ── 固定安全區：畫面下方中央偏左 ──
+    // ── 固定在農地群旁邊的安全位置 ──
     const MARGIN = 12;
-    const popupX = canvasWidth / 2 - POPUP_W / 2;
-    const popupY = canvasHeight - POPUP_H - 24;
+    const FARM_COLS = 3;
+    const FARM_ROWS = 2;
+    const farmGridW = FARM_COLS * this.FARM_SIZE;
+    const farmGridH = FARM_ROWS * this.FARM_SIZE;
+    const farmRight = this.farmStartX + farmGridW;
+    const farmBottom = this.farmStartY + farmGridH;
+    const SIDE_GAP = 12;
+
+    // 雞舍範圍（2×2 tile）
+    let coopX1 = -99999, coopY1 = -99999, coopX2 = -99999, coopY2 = -99999;
+    if (this.chickenCoopPlaced) {
+      coopX1 = this.farmStartX + this.chickenCoopTileX * this.FARM_SIZE;
+      coopY1 = this.farmStartY + this.chickenCoopTileY * this.FARM_SIZE;
+      coopX2 = coopX1 + this.FARM_SIZE * 2;
+      coopY2 = coopY1 + this.FARM_SIZE * 2;
+    }
+
+    // 優先放農地群右側
+    let popupX = farmRight + SIDE_GAP;
+    let popupY = this.farmStartY + (farmGridH - POPUP_H) / 2; // 垂直居中於農地群
+
+    // 右側超出 或 與雞舍重疊 → 改放農地群下方
+    const popupRight = popupX + POPUP_W;
+    const popupBottom = popupY + POPUP_H;
+    const coopOverlaps = this.chickenCoopPlaced &&
+      popupX < coopX2 && popupRight > coopX1 &&
+      popupY < coopY2 && popupBottom > coopY1;
+
+    if (popupRight > canvasWidth - MARGIN || coopOverlaps) {
+      popupX = this.farmStartX;
+      popupY = farmBottom + SIDE_GAP;
+    }
+
+    // clamp 確保不超出畫面
+    popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
+    popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
 
     // 透明互動層：防止點擊穿透到農地
     const popupHit = this.add.graphics();
