@@ -354,13 +354,20 @@ export default function GamePage() {
     // 這裡只做日誌或預留擴充
   };
 
-  // GDD 等級表（累積經驗）
-  const GDD_EXP = [0, 100, 220, 360, 520, 700, 900, 1120, 1360, 1620, 1920, 2260, 2640, 3060, 3520, 4020, 4570, 5170, 5820, 6520, 7320, 8220, 9220, 10320, 11520, 12820, 14220, 15720, 17320];
+  // GDD 等級表（key = 等級, value = 該級累積經驗）
+  const GDD_EXP_BY_LEVEL: Record<number, number> = {
+    1: 0, 2: 100, 3: 220, 4: 360, 5: 520,
+    6: 700, 7: 900, 8: 1120, 9: 1360, 10: 1620,
+    11: 1920, 12: 2260, 13: 2640, 14: 3060, 15: 3520,
+    16: 4020, 17: 4570, 18: 5170, 19: 5820, 20: 6520,
+    21: 7320, 22: 8220, 23: 9220, 24: 10320, 25: 11520,
+    26: 12820, 27: 14220, 28: 15720, 29: 17320,
+  };
   const currentLevel = displayUser?.level ?? 1;
   const totalExp = displayUser?.exp ?? 0;
-  const currentLevelBaseExp = GDD_EXP[Math.min(currentLevel, GDD_EXP.length - 1)] ?? 0;
-  const nextLevelBaseExp = GDD_EXP[Math.min(currentLevel + 1, GDD_EXP.length - 1)] ?? currentLevelBaseExp + 100;
-  const displayExp = totalExp - currentLevelBaseExp;
+  const currentLevelBaseExp = GDD_EXP_BY_LEVEL[currentLevel] ?? 0;
+  const nextLevelBaseExp = GDD_EXP_BY_LEVEL[currentLevel + 1] ?? currentLevelBaseExp + 100;
+  const displayExp = Math.max(0, totalExp - currentLevelBaseExp);
   const displayMax = nextLevelBaseExp - currentLevelBaseExp;
   const expPercent = displayMax > 0 ? Math.min(100, (displayExp / displayMax) * 100) : 0;
   
