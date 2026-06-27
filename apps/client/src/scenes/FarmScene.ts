@@ -939,10 +939,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // ── 選中農地高亮框 ──
+    // ── 選中農地高亮框（置於農地世界座標，strokeRect以自身為中心）──
     const hl = this.add.graphics();
     hl.lineStyle(3, 0xFFD700, 1);
-    hl.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
+    hl.strokeRect(-this.FARM_SIZE / 2, -this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
+    hl.setPosition(_x, _y);
     hl.setDepth(5000);
 
     // ── 跟隨農地位置，避開雞舍，永遠高於建築 ──
