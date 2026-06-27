@@ -946,6 +946,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     hl.setDepth(150);
 
     // ── 播種清單顯示在選中農地右側，間距12px ──
+    const MARGIN = 12;
     const SIDE_GAP = 12;
     let popupX = _x + this.FARM_SIZE / 2 + SIDE_GAP;
     let popupY = _y - POPUP_H / 2;
