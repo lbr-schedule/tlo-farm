@@ -933,17 +933,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const popupY = canvasHeight / 2 - POPUP_H / 2;
 
     // ── 背景遮罩(點擊關閉)──
-    this.seedPopupOverlay = this.add.graphics();
-    this.seedPopupOverlay.fillStyle(0x000000, 0.4);
-    this.seedPopupOverlay.fillRect(0, 0, canvasWidth, canvasHeight);
-    this.seedPopupOverlay.setDepth(199);
-    this.seedPopupOverlay.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, canvasWidth, canvasHeight),
-      Phaser.Geom.Rectangle.Contains
-    );
-    this.seedPopupOverlay.on('pointerdown', () => {
-      this.clearAllPopups();
-    });
+    // seedPopupOverlay removed — no dark dim background
 
     this.seedPopup = this.add.container(popupX, popupY);
     this.seedPopup.setDepth(200);
