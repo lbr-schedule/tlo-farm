@@ -929,14 +929,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // 跟随点击的农地世界坐标，popup出现在该农地上方
-    let popupX = _x - POPUP_W / 2;
-    let popupY = _y - 80;
+    // ── 背景遮罩(點擊關閉)──
+    // seedPopupOverlay removed — no dark dim background
 
-    // 边界保护：面板不可超出畫面
-    const MARGIN = 16;
-    popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
-    popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
+    // 播種清單定位：置於畫面中央（與以前成功版本一致）
+    const popupX = canvasWidth / 2 - POPUP_W / 2;
+    const popupY = canvasHeight / 2 - POPUP_H / 2;
 
     // ── 背景遮罩(點擊關閉)──
     // seedPopupOverlay removed — no dark dim background
@@ -952,6 +950,18 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
     bg.setDepth(200);
     this.seedPopup.add(bg);
+
+    // 透明互動層：防止點擊穿透到農地
+    const popupHit = this.add.graphics();
+    popupHit.fillStyle(0x000000, 0);
+    popupHit.fillRect(0, 0, POPUP_W, POPUP_H);
+    popupHit.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, POPUP_W, POPUP_H),
+      Phaser.Geom.Rectangle.Contains
+    );
+    popupHit.on('pointerdown', () => {}); // absorb events
+    popupHit.setDepth(199);
+    this.seedPopup.add(popupHit);
 
     // ── 標題 ──
     const title = this.add.text(POPUP_W / 2, 14, '選擇種子播種', {
