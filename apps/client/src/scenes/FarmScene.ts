@@ -885,7 +885,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // ── 狀態分支(用 cropState)──
     if (state.cropState === 'empty') {
       // 空地 →顯示播種選單
-      this.showSeedPopup(index, x, y);
+      // 直接從 farmState 的 x,y 計算 tile 世界座標（不用 closure capture 的 px/py）
+      const tileWorldX = this.farmStartX + state.x * this.FARM_SIZE + this.FARM_SIZE / 2;
+      const tileWorldY = this.farmStartY + state.y * this.FARM_SIZE + this.FARM_SIZE / 2;
+      this.showSeedPopup(index, tileWorldX, tileWorldY);
       return;
     }
 
