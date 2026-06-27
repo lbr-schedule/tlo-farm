@@ -945,20 +945,57 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     hl.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
     hl.setDepth(150);
 
-    // ── 播種清單顯示在選中農地右側，間距12px ──
+    // ── 智慧定位：依序嘗試右→左→下→上 ──
     const MARGIN = 12;
     const SIDE_GAP = 12;
-    let popupX = _x + this.FARM_SIZE / 2 + SIDE_GAP;
-    let popupY = _y - POPUP_H / 2;
 
-    // 右側超出 → 改放左側
-    if (popupX + POPUP_W > canvasWidth - MARGIN) {
-      popupX = _x - this.FARM_SIZE / 2 - POPUP_W - SIDE_GAP;
+    // 選中農地 pixel 範圍
+    const tileX1 = _x - this.FARM_SIZE / 2;
+    const tileY1 = _y - this.FARM_SIZE / 2;
+    const tileX2 = _x + this.FARM_SIZE / 2;
+    const tileY2 = _y + this.FARM_SIZE / 2;
+
+    // 雞舍 pixel 範圍（2×2 tile）
+    let coopX1 = -99999, coopY1 = -99999, coopX2 = -99999, coopY2 = -99999;
+    if (this.chickenCoopPlaced) {
+      const farmStartX = this.farmStartX;
+      const farmStartY = this.farmStartY;
+      coopX1 = farmStartX + this.chickenCoopTileX * this.FARM_SIZE;
+      coopY1 = farmStartY + this.chickenCoopTileY * this.FARM_SIZE;
+      coopX2 = coopX1 + this.FARM_SIZE * 2;
+      coopY2 = coopY1 + this.FARM_SIZE * 2;
     }
 
-    // 邊界clamp
-    popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
-    popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
+    // 矩形是否重疊
+    const rectsOverlap = (ax1: number, ay1: number, ax2: number, ay2: number,
+                          bx1: number, by1: number, bx2: number, by2: number) =>
+      !(ax2 <= bx1 || ax1 >= bx2 || ay2 <= by1 || ay1 >= by2);
+
+    // 嘗試四個位置（依序右、左、下、上）
+    const attempts = [
+      { x: _x + this.FARM_SIZE / 2 + SIDE_GAP, y: _y - POPUP_H / 2 },                           // 右
+      { x: _x - this.FARM_SIZE / 2 - POPUP_W - SIDE_GAP, y: _y - POPUP_H / 2 },                 // 左
+      { x: _x - POPUP_W / 2, y: _y + this.FARM_SIZE / 2 + SIDE_GAP },                          // 下
+      { x: _x - POPUP_W / 2, y: _y - this.FARM_SIZE / 2 - POPUP_H - SIDE_GAP },                // 上
+    ];
+
+    let popupX = attempts[0].x;
+    let popupY = attempts[0].y;
+
+    for (const pos of attempts) {
+      const px1 = pos.x, py1 = pos.y;
+      const px2 = pos.x + POPUP_W, py2 = pos.y + POPUP_H;
+      const inBounds = px1 >= MARGIN && px2 <= canvasWidth - MARGIN &&
+                       py1 >= MARGIN && py2 <= canvasHeight - MARGIN;
+      const hitsTile  = rectsOverlap(px1, py1, px2, py2, tileX1, tileY1, tileX2, tileY2);
+      const hitsCoop   = this.chickenCoopPlaced &&
+                         rectsOverlap(px1, py1, px2, py2, coopX1, coopY1, coopX2, coopY2);
+      if (inBounds && !hitsTile && !hitsCoop) {
+        popupX = pos.x;
+        popupY = pos.y;
+        break;
+      }
+    }
 
     // 透明互動層：防止點擊穿透到農地
     const popupHit = this.add.graphics();
