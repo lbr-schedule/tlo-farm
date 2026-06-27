@@ -929,8 +929,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    const popupX = canvasWidth / 2 - POPUP_W / 2;
-    const popupY = canvasHeight / 2 - POPUP_H / 2;
+    // 跟随点击的农地世界坐标，popup出现在该农地上方
+    const popupX = _x - POPUP_W / 2;
+    const popupY = _y - 80;
 
     // ── 背景遮罩(點擊關閉)──
     // seedPopupOverlay removed — no dark dim background
