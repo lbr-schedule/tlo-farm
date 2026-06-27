@@ -198,6 +198,7 @@ export default class FarmScene extends Phaser.Scene {
   private isFarmActionMenuOpen: boolean = false;
   private seedPopup: Phaser.GameObjects.Container | null = null;
   private seedPopupOverlay: Phaser.GameObjects.Graphics | null = null;
+  private seedHighlight: Phaser.GameObjects.Graphics | null = null;
 
   private _frameCount: number = 0;
   private FARM_SIZE = 180;
@@ -942,12 +943,22 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // ── 選中農地高亮框（置於農地世界座標，strokeRect以自身為中心）──
-    const hl = this.add.graphics();
-    hl.lineStyle(3, 0xFFD700, 1);
-    hl.strokeRect(-this.FARM_SIZE / 2, -this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
-    hl.setPosition(_x, _y);
-    hl.setDepth(5000);
+    // ── 選中農地高亮框（直接加到 scene，world coordinates）──
+    this.seedHighlight = this.add.graphics();
+    this.seedHighlight.lineStyle(3, 0xFFD700, 1);
+    this.seedHighlight.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
+    this.seedHighlight.setDepth(4999);
+    console.log('[SEED HIGHLIGHT DEBUG]', {
+      tileIndex: index,
+      stateX: state?.x,
+      stateY: state?.y,
+      tileWorldX: _x,
+      tileWorldY: _y,
+      highlightParent: 'scene',
+      farmStartX: this.farmStartX,
+      farmStartY: this.farmStartY,
+      FARM_SIZE: this.FARM_SIZE,
+    });
 
     // ── 跟隨農地位置，避開雞舍，永遠高於建築 ──
     const MARGIN = 12;
@@ -995,7 +1006,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     this.seedPopup = this.add.container(popupX, popupY);
     this.seedPopup.setDepth(10000);
-    this.seedPopup.add(hl);  // 高亮跟popup一起銷毀
     this.seedPopup.add(bg);
     this.seedPopup.add(popupHit);
 
@@ -3631,6 +3641,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (this.seedPopupOverlay) { this.seedPopupOverlay.destroy(); this.seedPopupOverlay = null; }
     // 4. 清除種子視窗
     if (this.seedPopup) { this.seedPopup.destroy(); this.seedPopup = null; }
+    // 5. 清除播種高亮框
+    if (this.seedHighlight) { this.seedHighlight.destroy(); this.seedHighlight = null; }
   }
 
   setSelectedSeed(cropId: number | null) {
