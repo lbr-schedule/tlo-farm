@@ -920,36 +920,33 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const displayCrops = cropDetailsCache.slice(0, 4);
     if (displayCrops.length === 0) return;
 
-    // ── 固定尺寸:280x300,置中顯示 ──
-    const POPUP_W = 280;
-    const POPUP_H = 300;
-    const ROW_H = 52;
-    const LIST_Y = 64;
+    // ── 小型浮動面板: 220x(依內容), 跟隨點擊農地 ──
+    const POPUP_W = 220;
+    const ROW_H = 44;
+    const TITLE_H = 36;
+    const CLOSE_H = 28;
+    const PADDING = 8;
+    // 動態高度: 標題+關閉+種子列(最多4筆)+padding
+    const MAX_SHOW = 4;
+    const seedsWithAmount = seeds.filter((s: any) => s.amount > 0);
+    const displaySeeds = seedsWithAmount
+      .map((seed: any) => cropDetailsCache.find((c: any) => c.id === seed.itemId))
+      .filter((c: any) => c !== undefined);
+    const visibleCount = Math.min(displaySeeds.length, MAX_SHOW);
+    const POPUP_H = TITLE_H + CLOSE_H + PADDING + visibleCount * ROW_H + PADDING;
+    const LIST_Y = TITLE_H;
 
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // ── 背景遮罩(點擊關閉)──
-    // seedPopupOverlay removed — no dark dim background
+    // 跟随点击的农地世界坐标，popup出现在该农地上方
+    let popupX = _x - POPUP_W / 2;
+    let popupY = _y - 60;
 
-    // 播種清單定位：置於畫面中央（與以前成功版本一致）
-    const popupX = canvasWidth / 2 - POPUP_W / 2;
-    const popupY = canvasHeight / 2 - POPUP_H / 2;
-
-    // ── 背景遮罩(點擊關閉)──
-    // seedPopupOverlay removed — no dark dim background
-
-    this.seedPopup = this.add.container(popupX, popupY);
-    this.seedPopup.setDepth(200);
-
-    // ── 背景 ──
-    const bg = this.add.graphics();
-    bg.fillStyle(0x3d2518, 0.65);
-    bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
-    bg.lineStyle(2, 0x8B4513, 1);
-    bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 10);
-    bg.setDepth(200);
-    this.seedPopup.add(bg);
+    // 边界保护
+    const MARGIN = 12;
+    popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
+    popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
 
     // 透明互動層：防止點擊穿透到農地
     const popupHit = this.add.graphics();
@@ -959,13 +956,25 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       new Phaser.Geom.Rectangle(0, 0, POPUP_W, POPUP_H),
       Phaser.Geom.Rectangle.Contains
     );
-    popupHit.on('pointerdown', () => {}); // absorb events
+    popupHit.on('pointerdown', () => {}); // absorb
     popupHit.setDepth(199);
+
+    // ── 背景 ──
+    const bg = this.add.graphics();
+    bg.fillStyle(0x3d2518, 0.88);
+    bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
+    bg.lineStyle(2, 0x8B4513, 1);
+    bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
+    bg.setDepth(200);
+
+    this.seedPopup = this.add.container(popupX, popupY);
+    this.seedPopup.setDepth(200);
+    this.seedPopup.add(bg);
     this.seedPopup.add(popupHit);
 
     // ── 標題 ──
-    const title = this.add.text(POPUP_W / 2, 14, '選擇種子播種', {
-      fontSize: '14px',
+    const title = this.add.text(POPUP_W / 2, 8, '選擇種子播種', {
+      fontSize: '13px',
       fontFamily: "'Cubic 11', sans-serif",
       color: '#FFD700',
       fontStyle: 'bold',
@@ -977,53 +986,59 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // ── X 關閉按鈕 ──
     const closeBtn = this.add.graphics();
     closeBtn.fillStyle(0xC0392B, 1);
-    closeBtn.fillRoundedRect(POPUP_W - 32, 8, 22, 22, 3);
+    closeBtn.fillRoundedRect(POPUP_W - 26, 6, 18, 18, 3);
     closeBtn.setInteractive(
-      new Phaser.Geom.Rectangle(POPUP_W - 32, 8, 22, 22),
+      new Phaser.Geom.Rectangle(POPUP_W - 26, 6, 18, 18),
       Phaser.Geom.Rectangle.Contains
     );
-    closeBtn.on('pointerdown', () => {
-      this.clearAllPopups();
-    });
+    closeBtn.on('pointerdown', () => { this.clearAllPopups(); });
+    closeBtn.setDepth(201);
     this.seedPopup.add(closeBtn);
 
-    const closeText = this.add.text(POPUP_W - 21, 19, 'X', {
-      fontSize: '14px',
+    const closeText = this.add.text(POPUP_W - 17, 15, 'X', {
+      fontSize: '12px',
       fontFamily: "'Cubic 11', sans-serif",
       color: '#FFFFFF',
       fontStyle: 'bold',
     });
     closeText.setOrigin(0.5, 0.5);
-    closeBtn.setDepth(203);
+    closeText.setDepth(201);
     this.seedPopup.add(closeText);
 
-    // ── 作物清單：改為依背包實際持有種子顯示（不再寫死前4種）──
-    const seedsWithAmount = seeds.filter((s: any) => s.amount > 0);
+    // ── 作物清單（最多4筆）──
+    const visibleSeeds = displaySeeds.slice(0, MAX_SHOW);
     console.log('[SEED SELECT INVENTORY]', { seedItems: JSON.parse(JSON.stringify(seedsWithAmount)) });
+    console.log('[SEED SELECT DISPLAY]', { displaySeeds: visibleSeeds.map((c: any) => ({ id: c.id, name: c.nameZhTw })) });
 
-    const displaySeeds = seedsWithAmount
-      .map((seed: any) => cropDetailsCache.find((c: any) => c.id === seed.itemId))
-      .filter((c: any) => c !== undefined);
-    console.log('[SEED SELECT DISPLAY]', { displaySeeds: displaySeeds.map((c: any) => ({ id: c.id, name: c.nameZhTw })) });
-
-    displaySeeds.forEach((crop: any, i: number) => {
-      const rowY = LIST_Y + i * ROW_H;
+    visibleSeeds.forEach((crop: any, i: number) => {
+      const rowY = LIST_Y + PADDING + i * ROW_H;
       const amount = seedCountMap[crop.id] || 0;
       const disabled = amount <= 0;
       const growTime = crop.growTimeSec || 0;
-      const alpha = disabled ? 0.45 : 1;
+      const alpha = disabled ? 0.4 : 1;
 
       // Row 背景
       const rowBg = this.add.graphics();
-      rowBg.fillStyle(disabled ? 0x333333 : 0x5C3D2E, disabled ? 0.5 : 0.8);
-      rowBg.fillRoundedRect(10, rowY, POPUP_W - 20, ROW_H - 6, 6);
+      rowBg.fillStyle(disabled ? 0x333333 : 0x5C3D2E, disabled ? 0.5 : 0.85);
+      rowBg.fillRoundedRect(6, rowY, POPUP_W - 12, ROW_H - 4, 4);
       rowBg.setAlpha(alpha);
       rowBg.setDepth(201);
       this.seedPopup.add(rowBg);
 
-      // 種子名稱(左側)
-      const nameText = this.add.text(20, rowY + ROW_H / 2, crop.nameZhTw, {
-        fontSize: '14px',
+      // 種子圖示（維持大小 36x36）
+      const iconKey = crop.icon || cropDetailsCache.find((c: any) => c.id === crop.id)?.icon || '';
+      if (iconKey) {
+        const icon = this.add.image(24, rowY + ROW_H / 2, iconKey);
+        icon.setDisplaySize(36, 36);
+        icon.setOrigin(0.5, 0.5);
+        icon.setAlpha(alpha);
+        icon.setDepth(202);
+        this.seedPopup.add(icon);
+      }
+
+      // 種子名稱
+      const nameText = this.add.text(46, rowY + ROW_H / 2, crop.nameZhTw, {
+        fontSize: '13px',
         fontFamily: "'Cubic 11', sans-serif",
         color: disabled ? '#888888' : '#FFFFFF',
       });
@@ -1032,51 +1047,35 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       nameText.setDepth(202);
       this.seedPopup.add(nameText);
 
-      // 數量(右側)
-      const amountText = this.add.text(POPUP_W - 20, rowY + ROW_H / 2, `x${amount}`, {
-        fontSize: '14px',
+      // 時間+數量（右側）
+      const infoText = this.add.text(POPUP_W - 10, rowY + ROW_H / 2, `${formatTime(growTime)} x${amount}`, {
+        fontSize: '11px',
         fontFamily: "'Cubic 11', sans-serif",
         color: disabled ? '#666666' : '#FFD700',
-        fontStyle: 'bold',
       });
-      amountText.setOrigin(1, 0.5);
-      amountText.setAlpha(alpha);
-      amountText.setDepth(202);
-      this.seedPopup.add(amountText);
+      infoText.setOrigin(1, 0.5);
+      infoText.setAlpha(alpha);
+      infoText.setDepth(202);
+      this.seedPopup.add(infoText);
 
-      // 成長時間(下方小字)
-      if (growTime > 0) {
-        const timeText = this.add.text(20, rowY + ROW_H / 2 + 14, formatTime(growTime), {
-          fontSize: '11px',
-          fontFamily: "'Cubic 11', sans-serif",
-          color: disabled ? '#555555' : '#AAAAAA',
-        });
-        timeText.setOrigin(0, 0.5);
-        timeText.setAlpha(alpha);
-        timeText.setDepth(202);
-        this.seedPopup.add(timeText);
-      }
-
-      // ── 點擊區域(數量 > 0 才能點擊)──
+      // 點擊區域
       if (disabled) return;
-
       const hitArea = this.add.graphics();
       hitArea.fillStyle(0x000000, 0);
-      hitArea.fillRoundedRect(10, rowY, POPUP_W - 20, ROW_H - 6, 6);
+      hitArea.fillRect(6, rowY, POPUP_W - 12, ROW_H - 4);
       hitArea.setInteractive(
-        new Phaser.Geom.Rectangle(10, rowY, POPUP_W - 20, ROW_H - 6),
+        new Phaser.Geom.Rectangle(6, rowY, POPUP_W - 12, ROW_H - 4),
         Phaser.Geom.Rectangle.Contains
       );
       hitArea.on('pointerdown', () => {
-                this.clearAllPopups();
+        this.clearAllPopups();
         this.plantCrop(index, crop.id);
       });
-      hitArea.setDepth(202);
+      hitArea.setDepth(203);
       this.seedPopup.add(hitArea);
     });
   }
 
-  // ============================================================
   // 顯示提示訊息
   // ============================================================
   private showHintPopup(x: number, y: number, message: string) {
