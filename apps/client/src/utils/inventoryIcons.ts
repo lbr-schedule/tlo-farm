@@ -64,13 +64,6 @@ export function getInventoryIcon(item: {
   name?: string;
   sprite?: string;
 }): string {
-  if (DEBUG) { console.log('[GET INVENTORY ICON]', {
-    itemType: item.itemType,
-    itemId: item.itemId,
-    name: item.name,
-    sprite: item.sprite,
-  }); }
-
   // ── seed ──
   if (item.itemType === 'seed') {
     if (item.itemId && seedIconById[item.itemId]) {

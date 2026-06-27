@@ -191,7 +191,7 @@ class BackpackSystem {
         this.fetchItems('item'),
         this.fetchItems('livestock'),
       ]);
-      console.log('[BACKPACK LIVESTOCK RAW SERVER]', JSON.parse(JSON.stringify(apiLivestock)));
+//       console.log('[BACKPACK LIVESTOCK RAW SERVER]', JSON.parse(JSON.stringify(apiLivestock)));
       // Merge 策略：API 為主（真實來源），localStorage 只補充 API 沒有的 itemId
       // 避免 localStorage 殘留的舊錯誤 itemId 覆蓋正確 API 資料
       const mergedMap = new Map<string, BackpackItem>();
@@ -209,7 +209,7 @@ class BackpackSystem {
         }
       }
       const mergedLivestock = Array.from(mergedMap.values());
-      console.log('[BACKPACK LIVESTOCK FINAL STATE]', JSON.parse(JSON.stringify(mergedLivestock)));
+//       console.log('[BACKPACK LIVESTOCK FINAL STATE]', JSON.parse(JSON.stringify(mergedLivestock)));
       this.setState({ seeds, crops, items, livestock: mergedLivestock, loading: false });
     } catch (err: any) {
       this.setState({ loading: false, error: err.message, livestock: this.state.livestock });
@@ -224,7 +224,7 @@ class BackpackSystem {
     // 種子只回傳 amount > 0 的項目
     if (type === 'seed') {
       const filtered = (data.inventory || []).filter((item: any) => item.amount > 0);
-      console.log('[BACKPACK SEED FINAL STATE]', { filtered });
+//       console.log('[BACKPACK SEED FINAL STATE]', { filtered });
       return filtered;
     }
     return data.inventory || [];
@@ -335,7 +335,7 @@ class BackpackSystem {
     const liveItem = this.state.livestock.find(i => i.itemId === itemId || i.item_id === itemId);
     if (liveItem) {
       const requestBody = { itemId: liveItem.itemId, itemType: 'livestock', amount: 1 };
-      console.log('[SELL LIVESTOCK REQUEST]', { liveItem: { itemId: liveItem.itemId, item_id: liveItem.item_id, name: liveItem.name, amount: liveItem.amount }, requestBody });
+//       console.log('[SELL LIVESTOCK REQUEST]', { liveItem: { itemId: liveItem.itemId, item_id: liveItem.item_id, name: liveItem.name, amount: liveItem.amount }, requestBody });
       try {
         const res = await authFetch('/api/shop/sell', {
           method: 'POST',

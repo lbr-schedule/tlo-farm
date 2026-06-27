@@ -515,6 +515,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       if (!this.coopPlacementMode || !this.coopPlacementPreview) return;
       this.updatePlacementPreview(pointer);
     });
+//     console.log('[PLACEMENT POINTERMOVE BOUND]');
     console.log('[PLACEMENT POINTERMOVE BOUND]');
 
     // ── 全域 pointerdown(只在 placement mode 使用,永遠只綁一次)──
@@ -527,6 +528,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }
       this.onBuildingPlacementPointerDown(pointer);
     });
+//     console.log('[PLACEMENT POINTERDOWN BOUND]');
     console.log('[PLACEMENT POINTERDOWN BOUND]');
 
     // 監聽 Phaser resize 事件
@@ -948,6 +950,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.seedHighlight.lineStyle(3, 0xFFD700, 1);
     this.seedHighlight.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
     this.seedHighlight.setDepth(4999);
+//     console.log('[SEED HIGHLIGHT DEBUG]', {
     console.log('[SEED HIGHLIGHT DEBUG]', {
       tileIndex: index,
       tileWorldX: _x,
@@ -1042,7 +1045,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // ── 作物清單（最多4筆）──
     const visibleSeeds = displaySeeds.slice(0, MAX_SHOW);
+//     console.log('[SEED SELECT INVENTORY]', { seedItems: JSON.parse(JSON.stringify(seedsWithAmount)) });
     console.log('[SEED SELECT INVENTORY]', { seedItems: JSON.parse(JSON.stringify(seedsWithAmount)) });
+//     console.log('[SEED SELECT DISPLAY]', { displaySeeds: visibleSeeds.map((c: any) => ({ id: c.id, name: c.nameZhTw })) });
     console.log('[SEED SELECT DISPLAY]', { displaySeeds: visibleSeeds.map((c: any) => ({ id: c.id, name: c.nameZhTw })) });
 
     visibleSeeds.forEach((crop: any, i: number) => {
@@ -1671,6 +1676,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.hideProgressBar(index);
     if (this.actionMenu) { this.actionMenu.destroy(); this.actionMenu = null; }
     this.isFarmActionMenuOpen = false;
+//     if (DEBUG) { console.log('[DRY STATE ENTER]', {
     if (DEBUG) { console.log('[DRY STATE ENTER]', {
       index,
       state: 'dry',
@@ -1714,6 +1720,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const state = this.farmState.get(index);
     if (!state) return;
 
+//     if (DEBUG) { console.log('[DRY RECOVER CHECK]', {
     if (DEBUG) { console.log('[DRY RECOVER CHECK]', {
       index,
       state: state.state,
@@ -1755,6 +1762,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.showProgressBar(index);
     }
 
+//     if (DEBUG) { console.log('[DRY RECOVER SUCCESS]', {
     if (DEBUG) { console.log('[DRY RECOVER SUCCESS]', {
       index,
       state: 'growing',
@@ -2341,6 +2349,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.debugGraphics.lineStyle(2, 0x0000ff, 1); // 藍色
       this.debugGraphics.strokeRect(b.x, b.y, b.width, b.height);
     }
+//     console.log('[DEBUG FARM LAND BOUNDS]', {
     console.log('[DEBUG FARM LAND BOUNDS]', {
       farmlandCount: this.farmlandObjects.length,
       bounds: this.farmlandObjects.map((f, i) => {
@@ -2349,6 +2358,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }),
     });
 
+//     console.log('[PREVIEW CREATED]');
     console.log('[PREVIEW CREATED]');
 
     // 建立後立刻放到第一個合法位置(不在農地上)
@@ -2735,6 +2745,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     coop.removeAllListeners('pointerdown');
     // 恢復：整張圖片可點擊，不要自訂 hitArea
     coop.setInteractive({ useHandCursor: true });
+//     console.log('[COOP SPRITE READY]', {
     console.log('[COOP SPRITE READY]', {
       exists: !!coop,
       interactive: !!coop.input,
@@ -2756,6 +2767,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.openChickenCoopPanel();
     });
     this.chickenCoopSprite = coop;
+//     console.log('[LOCAL PLACE SUCCESS]');
     console.log('[LOCAL PLACE SUCCESS]');
     // 追蹤是否被摧毀
     if (DEBUG_COOP) {
@@ -3354,6 +3366,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // 用 getBounds() 取得雞舍實際畫面範圍（origin 可能是 0,0）
     const bounds = this.chickenCoopSprite.getBounds();
+//     console.log('[COOP SPRITE BOUNDS]', {
     console.log('[COOP SPRITE BOUNDS]', {
       spriteX: this.chickenCoopSprite.x,
       spriteY: this.chickenCoopSprite.y,
@@ -3376,6 +3389,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const innerMaxX = bounds.x + bounds.width * 0.68;
     const innerMinY = bounds.y + bounds.height * 0.48;
     const innerMaxY = bounds.y + bounds.height * 0.72;
+//     console.log('[CHICK INNER AREA]', { innerMinX, innerMaxX, innerMinY, innerMaxY });
     console.log('[CHICK INNER AREA]', { innerMinX, innerMaxX, innerMinY, innerMaxY });
 
     // 4 隻雞隨機落在 inner area，4 個象限分散（不重疊、不站角落）
@@ -3389,6 +3403,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       x: Phaser.Math.Between(quadrants[i].minX, quadrants[i].maxX),
       y: Phaser.Math.Between(quadrants[i].minY, quadrants[i].maxY),
     }));
+//     console.log('[CHICK SPAWN POSITIONS]', positions.map((p: any, i: number) => ({ slot: i, x: p.x, y: p.y })));
     console.log('[CHICK SPAWN POSITIONS]', positions.map((p: any, i: number) => ({ slot: i, x: p.x, y: p.y })));
 
     // 雞的活動範圍侷限在 inner bounds 內（與 spawn 一致）
@@ -3472,6 +3487,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 關閉雞舍管理面板 ──
   private closeChickenCoopPanel() {
+//     console.log('[CLOSE PANEL EXECUTE]');
     console.log('[CLOSE PANEL EXECUTE]');
     // 清除倒數計時器
     if (this._coopCountdownInterval !== null) {
@@ -3497,6 +3513,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const tileX = Math.floor(x / this.FARM_SIZE);
     const tileY = Math.floor(y / this.FARM_SIZE);
 
+//     console.log('[PLACE API REQUEST]', { x, y, tileX, tileY });
     console.log('[PLACE API REQUEST]', { x, y, tileX, tileY });
 
     authFetch('/api/animals/chicken-coop/place', {
