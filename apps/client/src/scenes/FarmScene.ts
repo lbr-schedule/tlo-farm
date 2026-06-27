@@ -939,46 +939,46 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // ── 選中農地高亮框（計入seedPopup銷毀）──
+    // ── 選中農地高亮框 ──
     const hl = this.add.graphics();
     hl.lineStyle(3, 0xFFD700, 1);
     hl.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
-    hl.setDepth(150);
+    hl.setDepth(5000);
 
-    // ── 固定在農地群旁邊的安全位置 ──
+    // ── 跟隨農地位置，避開雞舍，永遠高於建築 ──
     const MARGIN = 12;
-    const FARM_COLS = 3;
-    const FARM_ROWS = 2;
-    const farmGridW = FARM_COLS * this.FARM_SIZE;
-    const farmGridH = FARM_ROWS * this.FARM_SIZE;
-    const farmRight = this.farmStartX + farmGridW;
-    const farmBottom = this.farmStartY + farmGridH;
     const SIDE_GAP = 12;
 
-    // 雞舍範圍：直接用 sprite.getBounds()（真實顯示範圍）
+    // 雞舍範圍（真實 sprite bounds）
     const coopBounds = this.chickenCoopSprite?.getBounds();
 
-    // 優先放農地群右側
-    let popupX = farmRight + SIDE_GAP;
-    let popupY = this.farmStartY + (farmGridH - POPUP_H) / 2; // 垂直居中於農地群
+    // 優先放農地右側
+    let popupX = _x + this.FARM_SIZE / 2 + SIDE_GAP;
+    let popupY = _y - POPUP_H / 2;
 
-    // 右側超出 或 與雞舍 sprite 重疊 → 改放農地群下方
     const popupRight = popupX + POPUP_W;
     const popupBottom = popupY + POPUP_H;
     const coopOverlaps = coopBounds &&
       popupX < coopBounds.right && popupRight > coopBounds.left &&
       popupY < coopBounds.bottom && popupBottom > coopBounds.top;
 
+    // 右側超出 或 與雞舍重疊 → 改放左側
     if (popupRight > canvasWidth - MARGIN || coopOverlaps) {
-      popupX = this.farmStartX;
-      popupY = farmBottom + SIDE_GAP;
+      popupX = _x - this.FARM_SIZE / 2 - POPUP_W - SIDE_GAP;
     }
 
-    // clamp 確保不超出畫面
+    // clamp 確保在畫面內
     popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
     popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
 
-    // 透明互動層：防止點擊穿透到農地
+    // ── 背景 + 透明互動層（depth 10000，永高於建築）──
+    const bg = this.add.graphics();
+    bg.fillStyle(0x3d2518, 0.88);
+    bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
+    bg.lineStyle(2, 0x8B4513, 1);
+    bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
+    bg.setDepth(10000);
+
     const popupHit = this.add.graphics();
     popupHit.fillStyle(0x000000, 0);
     popupHit.fillRect(0, 0, POPUP_W, POPUP_H);
@@ -986,19 +986,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       new Phaser.Geom.Rectangle(0, 0, POPUP_W, POPUP_H),
       Phaser.Geom.Rectangle.Contains
     );
-    popupHit.on('pointerdown', () => {}); // absorb
-    popupHit.setDepth(199);
-
-    // ── 背景 ──
-    const bg = this.add.graphics();
-    bg.fillStyle(0x3d2518, 0.88);
-    bg.fillRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
-    bg.lineStyle(2, 0x8B4513, 1);
-    bg.strokeRoundedRect(0, 0, POPUP_W, POPUP_H, 8);
-    bg.setDepth(200);
+    popupHit.on('pointerdown', (e: any) => { e.stopPropagation?.(); });
+    popupHit.setDepth(10001);
 
     this.seedPopup = this.add.container(popupX, popupY);
-    this.seedPopup.setDepth(200);
+    this.seedPopup.setDepth(10000);
     this.seedPopup.add(hl);  // 高亮跟popup一起銷毀
     this.seedPopup.add(bg);
     this.seedPopup.add(popupHit);
@@ -1011,7 +1003,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       fontStyle: 'bold',
     });
     title.setOrigin(0.5, 0);
-    title.setDepth(201);
+    title.setDepth(10002);
     this.seedPopup.add(title);
 
     // ── X 關閉按鈕 ──
@@ -1022,8 +1014,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       new Phaser.Geom.Rectangle(POPUP_W - 26, 6, 18, 18),
       Phaser.Geom.Rectangle.Contains
     );
-    closeBtn.on('pointerdown', () => { this.clearAllPopups(); });
-    closeBtn.setDepth(201);
+    closeBtn.on('pointerdown', (e: any) => { e.stopPropagation?.(); this.clearAllPopups(); });
+    closeBtn.setDepth(10003);
     this.seedPopup.add(closeBtn);
 
     const closeText = this.add.text(POPUP_W - 17, 15, 'X', {
@@ -1033,7 +1025,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       fontStyle: 'bold',
     });
     closeText.setOrigin(0.5, 0.5);
-    closeText.setDepth(201);
+    closeText.setDepth(10002);
     this.seedPopup.add(closeText);
 
     // ── 作物清單（最多4筆）──
@@ -1053,7 +1045,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       rowBg.fillStyle(disabled ? 0x333333 : 0x5C3D2E, disabled ? 0.5 : 0.85);
       rowBg.fillRoundedRect(6, rowY, POPUP_W - 12, ROW_H - 4, 4);
       rowBg.setAlpha(alpha);
-      rowBg.setDepth(201);
+      rowBg.setDepth(10001);
       this.seedPopup.add(rowBg);
 
       // 種子圖示（維持大小 36x36）
@@ -1063,7 +1055,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         icon.setDisplaySize(36, 36);
         icon.setOrigin(0.5, 0.5);
         icon.setAlpha(alpha);
-        icon.setDepth(202);
+        icon.setDepth(10002);
         this.seedPopup.add(icon);
       }
 
@@ -1076,7 +1068,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       nameText.setOrigin(0, 0.5);
       nameText.setAlpha(alpha);
-      nameText.setDepth(202);
+      nameText.setDepth(10002);
       this.seedPopup.add(nameText);
 
       // 時間+數量（右側）
@@ -1087,7 +1079,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       infoText.setOrigin(1, 0.5);
       infoText.setAlpha(alpha);
-      infoText.setDepth(202);
+      infoText.setDepth(10002);
       this.seedPopup.add(infoText);
 
       // 點擊區域
@@ -1099,11 +1091,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         new Phaser.Geom.Rectangle(6, rowY, POPUP_W - 12, ROW_H - 4),
         Phaser.Geom.Rectangle.Contains
       );
-      hitArea.on('pointerdown', () => {
+      hitArea.on('pointerdown', (e: any) => {
+        e.stopPropagation?.();
         this.clearAllPopups();
         this.plantCrop(index, crop.id);
       });
-      hitArea.setDepth(203);
+      hitArea.setDepth(10003);
       this.seedPopup.add(hitArea);
     });
   }
