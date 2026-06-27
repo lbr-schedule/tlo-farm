@@ -885,7 +885,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // ── 狀態分支(用 cropState)──
     if (state.cropState === 'empty') {
       // 空地 →顯示播種選單
-            this.showSeedPopup(index, x, y - this.FARM_SIZE / 2 - 10);
+      this.showSeedPopup(index, x, y);
       return;
     }
 
@@ -939,12 +939,23 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasWidth = this.scale.width;
     const canvasHeight = this.scale.height;
 
-    // 跟随点击的农地世界坐标，popup出现在该农地上方
-    let popupX = _x - POPUP_W / 2;
-    let popupY = _y - 60;
+    // ── 選中農地高亮框（計入seedPopup銷毀）──
+    const hl = this.add.graphics();
+    hl.lineStyle(3, 0xFFD700, 1);
+    hl.strokeRect(_x - this.FARM_SIZE / 2, _y - this.FARM_SIZE / 2, this.FARM_SIZE, this.FARM_SIZE);
+    hl.setDepth(150);
 
-    // 边界保护
-    const MARGIN = 12;
+    // ── 播種清單顯示在選中農地右側，間距12px ──
+    const SIDE_GAP = 12;
+    let popupX = _x + this.FARM_SIZE / 2 + SIDE_GAP;
+    let popupY = _y - POPUP_H / 2;
+
+    // 右側超出 → 改放左側
+    if (popupX + POPUP_W > canvasWidth - MARGIN) {
+      popupX = _x - this.FARM_SIZE / 2 - POPUP_W - SIDE_GAP;
+    }
+
+    // 邊界clamp
     popupX = Math.max(MARGIN, Math.min(popupX, canvasWidth - POPUP_W - MARGIN));
     popupY = Math.max(MARGIN, Math.min(popupY, canvasHeight - POPUP_H - MARGIN));
 
@@ -969,6 +980,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     this.seedPopup = this.add.container(popupX, popupY);
     this.seedPopup.setDepth(200);
+    this.seedPopup.add(hl);  // 高亮跟popup一起銷毀
     this.seedPopup.add(bg);
     this.seedPopup.add(popupHit);
 
