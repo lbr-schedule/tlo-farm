@@ -354,12 +354,15 @@ export default function GamePage() {
     // 這裡只做日誌或預留擴充
   };
 
-  // 計算升級所需經驗
-  const expForLevel = [0, 100, 250, 500, 1000, 2000, 4000, 8000];
+  // GDD 等級表（累積經驗）
+  const GDD_EXP = [0, 100, 220, 360, 520, 700, 900, 1120, 1360, 1620, 1920, 2260, 2640, 3060, 3520, 4020, 4570, 5170, 5820, 6520, 7320, 8220, 9220, 10320, 11520, 12820, 14220, 15720, 17320];
   const currentLevel = displayUser?.level ?? 1;
-  const currentExp = displayUser?.exp ?? 0;
-  const nextLevelExp = expForLevel[Math.min(currentLevel, expForLevel.length - 1)] ?? 100;
-  const expPercent = Math.min(100, (currentExp / nextLevelExp) * 100);
+  const totalExp = displayUser?.exp ?? 0;
+  const currentLevelBaseExp = GDD_EXP[Math.min(currentLevel, GDD_EXP.length - 1)] ?? 0;
+  const nextLevelBaseExp = GDD_EXP[Math.min(currentLevel + 1, GDD_EXP.length - 1)] ?? currentLevelBaseExp + 100;
+  const displayExp = totalExp - currentLevelBaseExp;
+  const displayMax = nextLevelBaseExp - currentLevelBaseExp;
+  const expPercent = displayMax > 0 ? Math.min(100, (displayExp / displayMax) * 100) : 0;
   
   return (
     <>
@@ -624,7 +627,7 @@ export default function GamePage() {
             <div className="pip-name">{displayUser?.nickname ?? displayUser?.username ?? displayUser?.name ?? '玩家'}</div>
             <div className="pip-title" style={{ color: displayUser?.title ? '#D8B04A' : '#9A8268' }}>{displayUser?.title ? `稱號：${displayUser.title}` : '尚未設定稱號'}</div>
             <div className="pip-level">Lv.{displayUser?.level ?? 1}</div>
-            <div className="pip-exp-label">{currentExp} / {nextLevelExp}</div>
+            <div className="pip-exp-label">{displayExp} / {displayMax}</div>
             <div className="pip-exp-bar-bg">
               <div className="pip-exp-bar-fill" style={{ width: `${expPercent.toFixed(1)}%` }} />
             </div>
@@ -846,7 +849,7 @@ export default function GamePage() {
                   <div style={{width:'100%',height:'7px',background:'#E8DCC4',border:'2px solid #4A2D16',overflow:'hidden'}}>
                     <div style={{width:`${expPercent.toFixed(1)}%`,height:'100%',background:'repeating-linear-gradient(90deg,#63C9FF 0px,#63C9FF 4px,#58E0C1 4px,#58E0C1 8px,#3FD7A3 8px,#3FD7A3 12px)',transition:'width 0.3s'}} />
                   </div>
-                  <div style={{fontSize:'10px',color:'#7A6A59',marginTop:'1px'}}>{currentExp} / {nextLevelExp}</div>
+                  <div style={{fontSize:'10px',color:'#7A6A59',marginTop:'1px'}}>{displayExp} / {displayMax}</div>
                 </div>
               </div>
             </div>
