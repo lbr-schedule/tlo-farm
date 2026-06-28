@@ -58,7 +58,7 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
         console.log(`[TASK PROGRESS INSERT] task_key=${taskKey} progress=0 → 1`);
         await db.execute(
           `INSERT INTO task_progress (user_id, task_key, progress, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
-          [userId, taskKey, todayStart, todayEnd]
+          [userId, taskKey, Date.now(), Date.now()]
         );
       }
     }
