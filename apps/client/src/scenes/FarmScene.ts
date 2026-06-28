@@ -1219,6 +1219,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         });
         this.events.emit('goldChanged', data.user.gold);
         this.events.emit('userUpdated', data.user);
+        window.dispatchEvent(new Event('task-updated'));
               } else {
         console.warn('[FarmScene] 播種失敗:', data.message);
         // 回滾:恢復農地狀態
@@ -1644,6 +1645,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           harvestYield: data.harvest.harvestYield,
         });
         console.log('[HARVEST BACKGROUND SYNC DONE]');
+        window.dispatchEvent(new Event('task-updated'));
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);
         // API 失敗:重新讀取農場狀態
@@ -1944,6 +1946,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         if (data.state === 'growing' && prevCropState === 'dry') {
                     this.recoverDryTile(index);
         }
+        window.dispatchEvent(new Event('task-updated'));
       }
     } catch (err) {
       console.warn('[FarmScene] 澆水 API 錯誤', err);
@@ -2029,6 +2032,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         if (data.gold !== undefined) {
           this.events.emit('goldChanged', data.gold);
         }
+        window.dispatchEvent(new Event('task-updated'));
         this.showFertilizeSuccess(index);
       } else {
         fertilizerText.destroy();

@@ -7,7 +7,7 @@ const DEBUG = false;
 const router = Router();
 
 // 更新任務進度的輔助函數
-async function updateTaskProgress(userId: number, type: 'harvest' | 'complete_order', cropId?: number) {
+async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'harvest' | 'complete_order', cropId?: number) {
   try {
     const today = new Date();
     const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
@@ -16,7 +16,11 @@ async function updateTaskProgress(userId: number, type: 'harvest' | 'complete_or
     const todayEnd = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
 
     const taskKeys: string[] = [];
-    if (type === 'harvest') {
+    if (type === 'plant') {
+      taskKeys.push('plant_any');
+    } else if (type === 'water') {
+      taskKeys.push('water_any');
+    } else if (type === 'harvest') {
       taskKeys.push('harvest_any');
       if (cropId === 1) taskKeys.push('harvest_wheat');
     } else if (type === 'complete_order') {
@@ -24,6 +28,8 @@ async function updateTaskProgress(userId: number, type: 'harvest' | 'complete_or
     }
 
     const taskTargets: Record<string, number> = {
+      'plant_any': 10,
+      'water_any': 15,
       'harvest_wheat': 10,
       'harvest_any': 20,
       'complete_order': 3,
@@ -520,6 +526,8 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
       [cropId, now, finishAt, now, tile.id]
     );
 
+    await updateTaskProgress(userId, 'plant', cropId);
+
     return res.json({ success: true, message: '播種成功', finishAt });
   } catch (error) {
     console.error('[POST /plant] error', error);
@@ -637,6 +645,8 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
       `UPDATE farm_tiles SET watered_at = ?, is_watered = 1 WHERE user_id = ? AND x = ? AND y = ?`,
       [Date.now(), userId, x, y]
     );
+
+    await updateTaskProgress(userId, 'water');
 
     return res.json({ success: true, message: '澆水成功' });
   } catch (error) {

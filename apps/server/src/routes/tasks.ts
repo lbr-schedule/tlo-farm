@@ -45,6 +45,24 @@ const DAILY_TASKS = [
   },
   {
     id: 2,
+    key: 'plant_any',
+    title: '播種作物',
+    description: '播種 10 次',
+    target: 10,
+    rewardCoins: 80,
+    rewardExp: 15,
+  },
+  {
+    id: 3,
+    key: 'water_any',
+    title: '澆水作物',
+    description: '澆水 15 次',
+    target: 15,
+    rewardCoins: 80,
+    rewardExp: 15,
+  },
+  {
+    id: 4,
     key: 'harvest_wheat',
     title: '收成小麥',
     description: '收成 10 個小麥',
@@ -53,7 +71,7 @@ const DAILY_TASKS = [
     rewardExp: 20,
   },
   {
-    id: 3,
+    id: 5,
     key: 'harvest_any',
     title: '收成任意作物',
     description: '收成 20 個任意作物',
@@ -62,7 +80,7 @@ const DAILY_TASKS = [
     rewardExp: 30,
   },
   {
-    id: 4,
+    id: 6,
     key: 'complete_order',
     title: '完成訂單',
     description: '完成 3 次訂單配送',
@@ -144,7 +162,7 @@ router.post('/progress', async (req: AuthRequest, res: Response) => {
     }
 
     const { type, cropId } = req.body;
-    // type: 'harvest' | 'complete_order'
+    // type: 'plant' | 'water' | 'harvest' | 'complete_order'
     // cropId: 1=小麥, 2=玉米, 3=紅蘿蔔, 4=馬鈴薯
 
     if (!type) {
@@ -162,7 +180,11 @@ router.post('/progress', async (req: AuthRequest, res: Response) => {
     // 確定要更新的 task keys
     const taskKeys: string[] = [];
 
-    if (type === 'harvest') {
+    if (type === 'plant') {
+      taskKeys.push('plant_any');
+    } else if (type === 'water') {
+      taskKeys.push('water_any');
+    } else if (type === 'harvest') {
       // 收成任意作物
       taskKeys.push('harvest_any');
       // 如果是小麥 (cropId=1)，也更新收成小麥

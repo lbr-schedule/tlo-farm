@@ -153,6 +153,17 @@ export default function GamePage() {
     return () => window.removeEventListener('livestock-state-updated', handler);
   }, []);
 
+  // ── 作物操作成功後刷新任務進度 ──
+  useEffect(() => {
+    const handler = () => {
+      if (showTaskRef.current) {
+        setTaskRefreshKey((k: number) => k + 1);
+      }
+    };
+    window.addEventListener('task-updated', handler);
+    return () => window.removeEventListener('task-updated', handler);
+  }, []);
+
   // ── 首次登入：標記登入任務完成 ──
   useEffect(() => {
     if (!user || loginTaskMarkedRef.current) return;
