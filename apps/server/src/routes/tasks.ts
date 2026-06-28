@@ -113,6 +113,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const todayStart = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) - (8 * 60 * 60 * 1000);
     const todayEnd = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
 
+    console.log(`[TASKS GET DEBUG] userId=${userId} todayStr=${todayStr} todayStart=${todayStart} todayEnd=${todayEnd} now=${Date.now()}`);
+
     // 查詢今日進度（updated_at 存的是毫秒，用範圍查詢，取每個 task_key 最新的記錄）
     const progressResult = await db.execute(
       `SELECT tp.task_key as taskKey, tp.progress, tp.claimed, tp.updated_at as updatedAt
@@ -126,6 +128,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
        WHERE tp.user_id = ? AND tp.updated_at >= ? AND tp.updated_at <= ?`,
       [userId, todayStart, todayEnd, userId, todayStart, todayEnd]
     );
+
+    console.log(`[TASKS GET PROGRESS RAW] rows=`, JSON.stringify(progressResult.rows));
 
     const progressMap: Record<string, { progress: number; claimed: boolean }> = {};
     for (const row of progressResult.rows || []) {
@@ -144,6 +148,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         claimed: p.claimed,
       };
     });
+
+    const hw = tasks.find(t => t.key === 'harvest_wheat');
+    const ha = tasks.find(t => t.key === 'harvest_any');
+    console.log(`[TASKS GET RESPONSE] harvest_wheat progress=${hw?.progress} harvest_any progress=${ha?.progress}`);
 
     return res.json({ success: true, tasks });
   } catch (error) {
