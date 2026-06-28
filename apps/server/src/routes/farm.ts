@@ -8,6 +8,7 @@ const router = Router();
 
 // 更新任務進度的輔助函數
 async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'harvest' | 'complete_order', cropId?: number) {
+  console.log(`[TASK UPDATE ENTER] userId=${userId} type=${type} cropId=${cropId}`);
   try {
     const today = new Date();
     const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
@@ -48,11 +49,13 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
 
       if (existing) {
         const newProgress = Math.min(existing.progress + 1, target);
+        console.log(`[TASK PROGRESS UPDATE] task_key=${taskKey} progress=${existing.progress} → ${newProgress}`);
         await db.execute(
           `UPDATE task_progress SET progress = ?, updated_at = ? WHERE id = ?`,
           [newProgress, Date.now(), existing.id]
         );
       } else {
+        console.log(`[TASK PROGRESS INSERT] task_key=${taskKey} progress=0 → 1`);
         await db.execute(
           `INSERT INTO task_progress (user_id, task_key, progress, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
           [userId, taskKey, todayStart, todayEnd]
