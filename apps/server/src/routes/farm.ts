@@ -8,7 +8,7 @@ const router = Router();
 
 // 更新任務進度的輔助函數
 async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'harvest' | 'complete_order', cropId?: number) {
-  console.log(`[TASK UPDATE ENTER] userId=${userId} type=${type} cropId=${cropId}`);
+  console.log(`[TASK UPDATE ENTER]`, { userId, type, cropId });
   try {
     const today = new Date();
     const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
@@ -567,8 +567,12 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '作物尚未成熟' });
     }
 
+    // 保存 cropId，避免後續操作後被覆蓋
+    const harvestedCropId = tile.cropId;
+    console.log(`[HARVEST TASK DEBUG BEFORE CLEAR] userId=${userId} x=${x} y=${y} cropIdBeforeClear=${harvestedCropId} state=${tile.state} finishAt=${tile.finishAt}`);
+
     const cropResult = await db.execute(
-      `SELECT name_zh_tw as name, harvest_yield as harvestYield, exp FROM crops WHERE id = ?`, [tile.cropId]
+      `SELECT name_zh_tw as name, harvest_yield as harvestYield, exp FROM crops WHERE id = ?`, [harvestedCropId]
     );
     const crop = cropResult.rows[0];
 
@@ -588,12 +592,12 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
 
     const invResult = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'crop' AND item_id = ?`,
-      [userId, tile.cropId]
+      [userId, harvestedCropId]
     );
     if ((invResult.rows || []).length > 0) {
       await db.execute(`UPDATE inventories SET amount = amount + ? WHERE id = ?`, [harvestYield, invResult.rows[0].id]);
     } else {
-      await db.execute(`INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, ?)`, [userId, tile.cropId, harvestYield]);
+      await db.execute(`INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, ?)`, [userId, harvestedCropId, harvestYield]);
     }
 
     await db.execute(
@@ -603,11 +607,13 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       [tile.id]
     );
 
-    await updateTaskProgress(userId, 'harvest', tile.cropId);
+    console.log(`[HARVEST TASK UPDATE CALL] userId=${userId} cropId=${harvestedCropId}`);
+    await updateTaskProgress(userId, 'harvest', harvestedCropId);
 
+    console.log(`[HARVEST RESPONSE DEBUG] cropId=${harvestedCropId} cropName=${crop.name} harvestYield=${harvestYield}`);
     return res.json({
       success: true,
-      harvest: { cropName: crop.name, harvestYield, exp: expReward },
+      harvest: { cropId: harvestedCropId, cropName: crop.name, harvestYield, exp: expReward },
       exp: expReward,
       user: { level: newLevel, exp: newExp },
     });
