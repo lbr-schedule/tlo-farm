@@ -128,7 +128,6 @@ router.get('/plots', async (req: AuthRequest, res: Response) => {
     const level = user.level ?? 1;
     const gold = user.gold ?? 0;
     const levelAllowedMax = getMaxPlotForLevel(level);
-
     // 回傳 actual level 方便前端顯示
     void level; // 已用於 levelAllowedMax
     const nextRule = getNextUnlockRule(plotCount);
@@ -430,6 +429,30 @@ async function migrateFarmTilesToPlots(userId: number) {
   }
 }
 
+// ============================================================
+// GET /api/farm/status — 給 FarmScene.syncFarmState() 回傳農地同步狀態
+// ============================================================
+router.get('/status', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ success: false, message: '未授權' });
+
+    await ensureFarmTiles(userId);
+    await migrateFarmTilesToPlots(userId);
+
+    const tilesResult = await db.execute(
+      `SELECT ${TILES_FIELDS} FROM farm_tiles WHERE user_id = ?`, [userId]
+    );
+
+    return res.json({
+      success: true,
+      tiles: tilesResult.rows || [],
+    });
+  } catch (error) {
+    console.error('[GET /status] error', error);
+    return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
 // 讀取農地狀態
 router.get('/tiles', async (req: AuthRequest, res: Response) => {
   try {
@@ -527,7 +550,9 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
     if (!tile.cropId || tile.state === 'empty') {
       return res.status(400).json({ success: false, message: '此地無作物可收成' });
     }
-    if (tile.state !== 'mature') {
+    // 用 finish_at 到期判斷成熟，不用 state 欄位
+    const isReadyByTime = tile.finishAt && Date.now() >= Number(tile.finishAt);
+    if (!isReadyByTime) {
       return res.status(400).json({ success: false, message: '作物尚未成熟' });
     }
 
