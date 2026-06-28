@@ -42,10 +42,10 @@ export default function TaskModal({ onClose, onUserUpdate, refreshKey }: TaskMod
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      console.log('[QUEST FETCH] 開始抓取任務');
+      console.log('[TASK MODAL FETCH TASKS]');
       const res = await authFetch('/api/tasks');
       const data = await res.json();
-      console.log('[QUEST FETCH] 讀取到的任務資料:', JSON.stringify(data.tasks));
+      console.log('[TASK MODAL TASKS RESULT]', JSON.stringify(data.tasks?.map(t => ({ key: t.key, progress: t.progress, claimed: t.claimed }))));
       if (data.success) {
         setTasks(data.tasks);
       } else {

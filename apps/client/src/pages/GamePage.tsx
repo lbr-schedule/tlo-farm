@@ -156,9 +156,8 @@ export default function GamePage() {
   // ── 作物操作成功後刷新任務進度 ──
   useEffect(() => {
     const handler = () => {
-      if (showTaskRef.current) {
-        setTaskRefreshKey((k: number) => k + 1);
-      }
+      console.log('[TASK UPDATED EVENT RECEIVED]');
+      setTaskRefreshKey((k: number) => k + 1);
     };
     window.addEventListener('task-updated', handler);
     return () => window.removeEventListener('task-updated', handler);
