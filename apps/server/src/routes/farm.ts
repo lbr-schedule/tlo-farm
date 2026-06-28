@@ -54,12 +54,14 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
           `UPDATE task_progress SET progress = ?, updated_at = ? WHERE id = ?`,
           [newProgress, Date.now(), existing.id]
         );
+        console.log(`[TASK PROGRESS WRITE]`, { userId, type, cropId, taskKey, progressAfter: newProgress, updatedAt: Date.now() });
       } else {
         console.log(`[TASK PROGRESS INSERT] task_key=${taskKey} progress=0 → 1`);
         await db.execute(
           `INSERT INTO task_progress (user_id, task_key, progress, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
           [userId, taskKey, Date.now(), Date.now()]
         );
+        console.log(`[TASK PROGRESS WRITE]`, { userId, type, cropId, taskKey, progressAfter: 1, updatedAt: Date.now() });
       }
     }
   } catch (e) {

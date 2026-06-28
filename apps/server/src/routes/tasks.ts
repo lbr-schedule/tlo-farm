@@ -114,6 +114,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const todayEnd = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
 
     console.log(`[TASKS GET DEBUG] userId=${userId} todayStr=${todayStr} todayStart=${todayStart} todayEnd=${todayEnd} now=${Date.now()}`);
+    console.log(`[TASKS GET RAW PROGRESS]`, { userId, todayStart, todayEnd, rows: progressResult.rows });
 
     // 查詢今日進度（updated_at 存的是毫秒，用範圍查詢，取每個 task_key 最新的記錄）
     const progressResult = await db.execute(
@@ -151,7 +152,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const hw = tasks.find(t => t.key === 'harvest_wheat');
     const ha = tasks.find(t => t.key === 'harvest_any');
-    console.log(`[TASKS GET RESPONSE] harvest_wheat progress=${hw?.progress} harvest_any progress=${ha?.progress}`);
+    console.log(`[TASKS GET FINAL]`, { harvest_wheat: hw?.progress, harvest_any: ha?.progress });
 
     return res.json({ success: true, tasks });
   } catch (error) {
