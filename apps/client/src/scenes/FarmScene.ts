@@ -2906,22 +2906,25 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   private _coopListenersInitialized: boolean = false;
   // 用於存 panel DOM 引用，讓 class method 也能呼叫 re-binding
   private _coopPanelEl: HTMLDivElement | null = null;
+  private _coopEscHandler: ((e: KeyboardEvent) => void) | null = null;
 
   // ── 統一按鈕事件綁定（每次 innerHTML 重繪後都要呼叫）──
-  private bindChickenCoopPanelEvents(panelEl: HTMLDivElement) {
-    const feedBtn = panelEl.querySelector('[data-action="feed"]') as HTMLButtonElement | null;
-    const collectBtn = panelEl.querySelector('[data-action="collect-eggs"]') as HTMLButtonElement | null;
-    const closeBtn = panelEl.querySelector('[data-action="close"]') as HTMLButtonElement | null;
-    console.log('[CLOSE BTN EXISTS]', !!closeBtn);
-
+  private bindChickenCoopPanelEvents() {
+    const panel = this._coopPanelEl;
+    if (!panel) return;
+    const feedBtn = panel.querySelector('[data-action="feed"]') as HTMLButtonElement | null;
+    const collectBtn = panel.querySelector('[data-action="collect-eggs"]') as HTMLButtonElement | null;
+    const closeBtn = panel.querySelector('[data-action="close"]') as HTMLButtonElement | null;
+    console.log('[COOP PANEL BIND] closeBtn=' + !!closeBtn);
 
     // 使用 onclick（單一賦值）取代 addEventListener，避免每秒重新 binding 累積重複監聽器
-    if (feedBtn) feedBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleFeedChickenCoop(panelEl); };
-    if (collectBtn) collectBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleCollectEggs(panelEl); };
+    if (feedBtn) feedBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleFeedChickenCoop(); };
+    if (collectBtn) collectBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleCollectEggs(); };
     if (closeBtn) {
       closeBtn.onclick = (e: Event) => {
-        console.log('[CLOSE BUTTON CLICKED]');
+        console.log('[COOP PANEL CLOSE CLICK]');
         e.stopPropagation();
+        e.preventDefault();
         this.closeChickenCoopPanel();
       };
     }
@@ -3068,9 +3071,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ── 重新整理雞舍面板狀態（DOM 重建後重新 binding）──
-  private refreshCoopPanelStatus(panelEl: HTMLDivElement) {
-    // 如果 panel 已關閉，不做任何事
-    if (!this._coopPanelEl) { console.log('[PANEL REFRESH] skipped — _coopPanelEl is null'); return; }
+  // _panelElArg 忽略，統一用 this._coopPanelEl（杜絕閉包殘留）
+  private refreshCoopPanelStatus(_panelElArg?: HTMLDivElement) {
+    const panelEl = this._coopPanelEl;
+    if (!panelEl) return;
     if (!document.body.contains(panelEl)) {
       console.log('[PANEL REFRESH] skipped — panelEl not in DOM');
       if (this._coopCountdownInterval !== null) {
@@ -3099,23 +3103,13 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const eggCount = collectableEggs;
       const capacity = slots.length || 4;
 
-      console.log('[PANEL REFRESH]', {
-        slotStates: slots.map((s: any) => s.state),
-        eggCount,
-        canFeed,
-        canCollect,
-        hasReadyToCollect,
-        hasReadyToFeed,
-        hasProducing,
-      });
-
       const container = panelEl.querySelector('#coop-status-container');
       if (!container) { console.warn('[PANEL REFRESH] container not found'); return; }
       // 重新渲染狀態文字
       const html = this.buildCoopStatusHtml({ animalCount, babyCount, adultCount, feedStatus, lastFedAt, eggCount, capacity, canFeed, feedBtnLabel, canCollect, hasReadyToCollect, hasProducing, minRemainingSec });
       container.innerHTML = html;
       // DOM 重建後必須重新 binding
-      this.bindChickenCoopPanelEvents(panelEl);
+      this.bindChickenCoopPanelEvents();
     } catch(e) { console.warn('[PANEL REFRESH] error', e); }
   }
 
@@ -3161,7 +3155,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // 點雞舍開面板：必須先從 API 取最新狀態，再 render
   private async openChickenCoopPanel() {
-    // 避免重複開啟
+    console.log('[COOP PANEL OPEN]');
+    // ── 一律先清乾淨舊面板（只清 UI，不刷資料）──
+    this.closeChickenCoopPanel();
+    // 避免重複開啟（closeChickenCoopPanel 已清，double-check）
     if (this._coopPanelEl) return;
 
     // 記錄點擊前雞舍 sprite 狀態
@@ -3277,8 +3274,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       hasProducing,
       minRemainingSec: this.getCoopMinRemainingSec(),
     });
-    this.bindChickenCoopPanelEvents(panel);
+    this.bindChickenCoopPanelEvents();
     console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
+    // ── 註冊 Esc handler（只掛一次）──
+    this._coopEscHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { console.log('[COOP PANEL ESC]'); this.closeChickenCoopPanel(); } };
+    document.addEventListener('keydown', this._coopEscHandler);
     // 面板 DOM 建立完成後，用統一計時器啟動倒計時
     this.startCoopCountdownTimer();
     this._coopListenersInitialized = true;
@@ -3487,8 +3487,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // ── 關閉雞舍管理面板 ──
   private closeChickenCoopPanel() {
-//     console.log('[CLOSE PANEL EXECUTE]');
-    console.log('[CLOSE PANEL EXECUTE]');
+    console.log('[COOP PANEL CLOSE EXECUTE]');
     // 清除倒數計時器
     if (this._coopCountdownInterval !== null) {
       clearInterval(this._coopCountdownInterval);
@@ -3504,6 +3503,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this._coopBackdropEl.remove();
       this._coopBackdropEl = undefined;
     }
+    // 移除 Esc listener
+    if (this._coopEscHandler) {
+      document.removeEventListener('keydown', this._coopEscHandler);
+      this._coopEscHandler = null;
+    }
+    console.log('[COOP PANEL CLEANED]');
   }
 
   // ── 共用 API 放置處理(DOM click 與 Phaser pointerdown 共用)──
