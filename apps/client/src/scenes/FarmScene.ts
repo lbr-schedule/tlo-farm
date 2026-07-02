@@ -288,6 +288,18 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmStartX = this.farmStartX;
     const farmStartY = this.farmStartY;
 
+    // [DEBUG] Log farmland creation values
+    console.log('[FARM_CREATE]', {
+      CANVAS_W: this.CANVAS_W,
+      CANVAS_H: this.CANVAS_H,
+      FARM_SIZE: this.FARM_SIZE,
+      FARM_GAP: this.FARM_GAP,
+      totalFarmW,
+      totalFarmH,
+      farmStartX,
+      farmStartY
+    });
+
     //全部初始化為空(無硬編碼假資料)
     for (let i = 0; i < 6; i++) {
       const col = i % COLS;
@@ -2133,6 +2145,23 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // this.chickenCoopTileX/Y = farmland-relative farmland tile (0-15)
     const coopPixelX = farmStartX + this.chickenCoopTileX * this.FARM_SIZE + this.FARM_SIZE;
     const coopPixelY = farmStartY + this.chickenCoopTileY * this.FARM_SIZE + this.FARM_SIZE;
+
+    // [DEBUG] Log all values for comparison
+    console.log('[RENDER_CHICKEN_COOP]', {
+      CANVAS_W: this.CANVAS_W,
+      CANVAS_H: this.CANVAS_H,
+      FARM_SIZE: this.FARM_SIZE,
+      FARM_GAP: this.FARM_GAP,
+      totalFarmW,
+      totalFarmH,
+      farmStartX,
+      farmStartY,
+      chickenCoopTileX: this.chickenCoopTileX,
+      chickenCoopTileY: this.chickenCoopTileY,
+      coopPixelX,
+      coopPixelY,
+      farmlandPositions: this.farmlandObjects.map((fo, i) => ({ i, x: Math.round(fo.x), y: Math.round(fo.y) }))
+    });
 
     const coopSprite = this.add.sprite(coopPixelX, coopPixelY, 'chicken_coop');
     // 2×2 農地大小 = 240×240
