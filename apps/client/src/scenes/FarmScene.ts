@@ -16,34 +16,13 @@ import {
   getAllCropDetails,
   setupCropCache,
 } from '../systems/crop/CropConfig';
+import type { TileData } from '../systems/crop/TileTypes';
+import { computeCropState } from '../systems/crop/CropStateManager';
 
 // Re-export so existing importers still work
 // TODO: migrate importers to import from CropConfig directly
 export { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT, TILE_TYPES, CROP_SPRITES, CROP_STAGE_VISUAL_OFFSET, CROP_ID_TO_KEY, CROP_KEY_TO_ID, getCropDetails };
 export type { CropData, GrowthStage };
-
-export interface TileData {
-  x: number;
-  y: number;
-  type: 'grass' | 'soil' | 'path' | 'tree';
-  cropId?: number;
-  plantedAt?: number;
-  finishAt?: number;
-  wateredAt?: number;       // 上次澆水時間(ms)
-  isWatered: boolean;       // 是否在 30 分鐘內澆過水
-  cropStatus: 'healthy' | 'needs_water';  // MVP 暫時只有這兩種
-  state: 'empty' | 'seed' | 'seedling' | 'growing' | 'mature' | 'dry' | 'withered'; // 來自後端(兼容用)
-  cropState: 'empty' | 'seed' | 'seedling' | 'growing' | 'mature' | 'dry' | 'withered'; // 計算後(dry/withered 優先)
-  soilState: 'dry' | 'watered'; // 土地視覺狀態
-  readyAnimated?: boolean;
-  growingStartedAt?: number;
-  isFertilized?: number;         // 0 或 1
-  fertilizedAt?: number | null;
-  fertilizerType?: string;
-  fertilizerSpeedBonus?: number;
-  dryStartedAt?: number | null;  // 進入乾燥狀態的時間戳(ms)
-  careCheckAt?: number | null; // 播種後 10 秒才開始檢查照顧條件
-}
 
 const DEBUG = false;
 const DEBUG_FARM = false;
@@ -126,16 +105,6 @@ export default class FarmScene extends Phaser.Scene {
     return this.calcWaterStatus(wateredAt).isWatered ? 1.0 : 0.5;
   }
 
-  // ── 計算作物狀態(mature 優先級最高)──
-  // 規則:只要 cropId 有值且時間到了就是 mature,不看其他狀態
-  private computeCropState(cropId: number | undefined, finishAt: number | undefined, serverState: string): TileData['cropState'] {
-    if (!cropId || !finishAt) return 'empty';
-    if (Date.now() >= finishAt) return 'mature';
-    // 時間還沒到,用 serverState 或從 progress 推算
-    if (serverState === 'seed') return 'seed';
-    if (serverState === 'seedling') return 'seedling';
-    return 'growing';
-  }
 
   // ── 計算土地視覺狀態 ──
   private computeSoilState(wateredAt: number | undefined): TileData['soilState'] {
@@ -520,7 +489,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
             const { isWatered, cropStatus } = this.calcWaterStatus(tile.wateredAt);
             const cropState = isDryOrWithered
               ? rawState as any
-              : (clientIsRecovered ? 'growing' : this.computeCropState(tile.cropId, tile.finishAt, tile.state));
+              : (clientIsRecovered ? 'growing' : computeCropState(tile.cropId, tile.finishAt, tile.state));
             // 空農地一定顯示乾農地,不受 wateredAt 殘留值影響
             const soilState = (!tile.cropId || tile.state === 'empty') ? 'dry' : this.computeSoilState(tile.wateredAt);
             // 對於已種植的作物,設定照顧檢查時間(播種後 10 秒)
