@@ -153,16 +153,6 @@ export default function GamePage() {
     return () => window.removeEventListener('livestock-state-updated', handler);
   }, []);
 
-  // ── 作物操作成功後刷新任務進度 ──
-  useEffect(() => {
-    const handler = () => {
-      console.log('[TASK UPDATED EVENT RECEIVED]');
-      setTaskRefreshKey((k: number) => k + 1);
-    };
-    window.addEventListener('task-updated', handler);
-    return () => window.removeEventListener('task-updated', handler);
-  }, []);
-
   // ── 首次登入：標記登入任務完成 ──
   useEffect(() => {
     if (!user || loginTaskMarkedRef.current) return;
@@ -338,15 +328,19 @@ export default function GamePage() {
   };
 
   // ── 從伺服器更新使用者資料（exp/level/gold）──
-  const handleUserUpdated = (user: { gold: number; exp: number; level: number }) => {
+  const handleUserUpdated = (user: { gold: number; exp?: number; level?: number }) => {
     const oldLevel = displayUser?.level ?? 1;
     setDisplayUser(prev => ({
       ...prev!,
-      gold: user.gold,
-      exp: user.exp,
-      level: user.level,
+      gold: user.gold ?? prev?.gold,
+      exp: user.exp ?? prev?.exp,
+      level: user.level ?? prev?.level,
     }));
-    if (updateUser) updateUser({ gold: user.gold, exp: user.exp, level: user.level });
+    if (updateUser) updateUser({
+      gold: user.gold ?? displayUser?.gold,
+      exp: user.exp ?? displayUser?.exp,
+      level: user.level ?? displayUser?.level,
+    });
     // 升級檢查：oldLevel 在 setDisplayUser 之前 captured，防止同一 level 重複彈窗
     if (user.level > oldLevel && user.level > (lastShownLevelRef.current ?? 0)) {
       lastShownLevelRef.current = user.level;

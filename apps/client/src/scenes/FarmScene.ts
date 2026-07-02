@@ -1219,7 +1219,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         });
         this.events.emit('goldChanged', data.user.gold);
         this.events.emit('userUpdated', data.user);
-        window.dispatchEvent(new Event('task-updated'));
               } else {
         console.warn('[FarmScene] 播種失敗:', data.message);
         // 回滾:恢復農地狀態
@@ -1639,13 +1638,13 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         // userUpdated 事件
         this.events.emit('userUpdated', data.user);
         this.events.emit('harvest', {
-          gold: data.harvest.goldEarned,
-          exp: data.harvest.expEarned,
-          cropName: data.harvest.cropName,
-          harvestYield: data.harvest.harvestYield,
+          gold: data.exp ?? expReward,
+          exp: data.harvest?.exp ?? expReward,
+          cropId: data.cropId ?? state.cropId,
+          cropName: data.cropName ?? state.cropId,
+          harvestYield: data.harvest?.harvestYield ?? 1,
         });
         console.log('[HARVEST BACKGROUND SYNC DONE]');
-        window.dispatchEvent(new Event('task-updated'));
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);
         // API 失敗:重新讀取農場狀態
@@ -1946,7 +1945,6 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         if (data.state === 'growing' && prevCropState === 'dry') {
                     this.recoverDryTile(index);
         }
-        window.dispatchEvent(new Event('task-updated'));
       }
     } catch (err) {
       console.warn('[FarmScene] 澆水 API 錯誤', err);
@@ -2002,37 +2000,73 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       if (data.success) {
         // 刷新背包
         backpackSystem.fetchAll();
-        // 使用伺服器返回的狀態(包含 dry 恢復)
+
+        // ── 診斷日誌：先看清楚 server 實際回傳格式 ──
+        console.log('[FERTILIZE RAW RESPONSE]', JSON.stringify(data, null, 2));
+
+        // 支援多層 response 格式：data.tile / data.data.tile / data.result.tile
+        const responseTile =
+          data?.tile ??
+          (data?.data ? (data.data.tile ?? null) : null) ??
+          (data?.result ? (data.result.tile ?? null) : null);
+
         const prevCropState = state.cropState;
         const now = Date.now();
-        const newStateFromServer = data.state ?? state.cropState;
-        this.farmState.set(index, {
-          ...state,
-          isFertilized: 1,
-          fertilizedAt: now,
-          fertilizerType: 'normal',
-          fertilizerSpeedBonus: 20,
-          state: newStateFromServer,
-          cropState: newStateFromServer,
-          dryStartedAt: newStateFromServer === 'growing' ? undefined : state.dryStartedAt,
-        });
-                // ── DRY 恢復檢查 ──
-        if (newStateFromServer === 'growing' && prevCropState === 'dry') {
-                    this.recoverDryTile(index);
+
+        // responseTile 存在：優先用 server tile 狀態
+        if (responseTile) {
+          const newStateFromServer = responseTile.state ?? 'growing';
+          this.farmState.set(index, {
+            ...state,
+            isFertilized: 1,
+            fertilizedAt: responseTile.fertilizedAt ?? now,
+            fertilizerType: 'normal',
+            fertilizerSpeedBonus: 20,
+            state: newStateFromServer,
+            cropState: newStateFromServer,
+            dryStartedAt: undefined,   // server 回 growing 就清除
+            witherAt: undefined,
+          });
+          console.log('[FERTILIZE CLIENT APPLY TILE]', {
+            index,
+            beforeFarmState: prevCropState,
+            responseTileState: responseTile.state,
+            afterFarmState: this.farmState.get(index)?.cropState,
+          });
+
+          // ── 無論之前是不是 dry，server 回 growing 就完整恢復 ──
+          if (newStateFromServer === 'growing') {
+            this.recoverDryTile(index);
+          } else {
+            this.hideDryIndicator(index);
+            this.updateFarmTileVisual(index);
+            this.renderCrop(index);
+          }
         } else {
-          // 正常施肥(不是 dry 恢復):只更新 UI
-          if (this.actionMenu) { this.actionMenu.destroy(); this.actionMenu = null; }
-          this.isFarmActionMenuOpen = false;
-          this.hideDryIndicator(index);
-          this.updateFarmTileVisual(index);
-          this.renderCrop(index);
-          this.updateProgressBar(index);
+          // responseTile 是 undefined：server 格式異常，仍當成功處理（防呆）
+          console.error('[FERTILIZE] tile undefined，採用 fallback。response:', data);
+          this.farmState.set(index, {
+            ...state,
+            isFertilized: 1,
+            fertilizedAt: now,
+            fertilizerType: 'normal',
+            fertilizerSpeedBonus: 20,
+            state: 'growing',
+            cropState: 'growing',
+            dryStartedAt: undefined,
+            witherAt: undefined,
+          });
+          console.log('[FERTILIZE CLIENT FALLBACK]', {
+            index,
+            beforeFarmState: prevCropState,
+            afterFarmState: 'growing',
+          });
+          this.recoverDryTile(index);
         }
         // 更新金幣顯示
         if (data.gold !== undefined) {
           this.events.emit('goldChanged', data.gold);
         }
-        window.dispatchEvent(new Event('task-updated'));
         this.showFertilizeSuccess(index);
       } else {
         fertilizerText.destroy();
@@ -2302,7 +2336,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     );
     coopSprite.on('pointerdown', () => {
       if (!this.farmInputEnabled) return;
-      this.events.emit('openChickenCoop');
+      this.openChickenCoopPanel();
     });
 
     this.chickenCoopSprite = coopSprite;
@@ -2911,31 +2945,57 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 用於存 panel DOM 引用，讓 class method 也能呼叫 re-binding
   private _coopPanelEl: HTMLDivElement | null = null;
   private _coopEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private _coopPanelClickHandler: ((e: MouseEvent) => void) | null = null;
+  // 防止 backdrop/esc 在 panel 建立期間（同一 event loop）觸發 close
+  private _coopOpening: boolean = false;
 
-  // ── 統一按鈕事件綁定（每次 innerHTML 重繪後都要呼叫）──
+  // ── 直接綁定每顆按鈕 onclick（innerHTML 重建後需再次呼叫）──
   private bindChickenCoopPanelEvents() {
     const panel = this._coopPanelEl;
-    if (!panel) return;
-    const feedBtn = panel.querySelector('[data-action="feed"]') as HTMLButtonElement | null;
-    const collectBtn = panel.querySelector('[data-action="collect-eggs"]') as HTMLButtonElement | null;
-    const closeBtn = panel.querySelector('[data-action="close"]') as HTMLButtonElement | null;
-    console.log('[COOP PANEL BIND] closeBtn=' + !!closeBtn);
+    if (!panel) { console.warn('[COOP BIND] no panel'); return; }
 
-    // 使用 onclick（單一賦值）取代 addEventListener，避免每秒重新 binding 累積重複監聽器
-    if (feedBtn) feedBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleFeedChickenCoop(); };
-    if (collectBtn) collectBtn.onclick = (e: Event) => { e.stopPropagation(); this.handleCollectEggs(); };
+    const closeBtn = panel.querySelector('#coop-panel-close-btn') as HTMLButtonElement | null;
+    const collectBtn = panel.querySelector('#coop-collect-eggs-btn') as HTMLButtonElement | null;
+    const feedBtn = panel.querySelector('#coop-feed-btn') as HTMLButtonElement | null;
+
+    console.log('[COOP BIND] closeBtn=' + !!closeBtn + ' collectBtn=' + !!collectBtn + ' feedBtn=' + !!feedBtn);
+
     if (closeBtn) {
       closeBtn.onclick = (e: Event) => {
-        console.log('[COOP PANEL CLOSE CLICK]');
-        e.stopPropagation();
         e.preventDefault();
-        this.closeChickenCoopPanel();
+        e.stopPropagation();
+        console.log('[COOP CLOSE BUTTON DIRECT CLICK]');
+        this.closeChickenCoopPanel('close-button');
       };
+    } else {
+      console.warn('[COOP BIND] closeBtn not found');
+    }
+
+    if (collectBtn) {
+      collectBtn.onclick = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[COOP COLLECT BUTTON DIRECT CLICK]');
+        this.handleCollectEggs();
+      };
+    } else {
+      console.warn('[COOP BIND] collectBtn not found');
+    }
+
+    if (feedBtn) {
+      feedBtn.onclick = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[COOP FEED BUTTON DIRECT CLICK]');
+        this.handleFeedChickenCoop();
+      };
+    } else {
+      console.warn('[COOP BIND] feedBtn not found');
     }
   }
 
   // ── 餵食按鈕 handler ──
-  private async handleFeedChickenCoop(panelEl: HTMLDivElement) {
+  private async handleFeedChickenCoop() {
     console.log('[FEED BUTTON CLICKED]');
     // 第一幀立即更新按鈕狀態（同步）
     const feedBtn = document.getElementById('coop-feed-btn');
@@ -2995,14 +3055,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.events.emit('game-toast', '餵食失敗，請稍後再試');
     } finally {
       // 最後一步：重建面板（按鈕狀態會被 refreshCoopPanelStatus 正確還原）
-      this.refreshCoopPanelStatus(panelEl);
+      this.refreshCoopPanelStatus();
       // 重新計算倒計時並啟動（餵食後 slot 已變 PRODUCING）
       this.startCoopCountdownTimer();
     }
   }
 
   // ── 收雞蛋按鈕 handler ──
-  private async handleCollectEggs(panelEl: HTMLDivElement) {
+  private async handleCollectEggs() {
     console.log('[COLLECT BUTTON CLICKED]');
     // 第一幀立即更新按鈕狀態（同步）
     const collectBtn = document.getElementById('coop-collect-eggs-btn');
@@ -3055,12 +3115,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.events.emit('game-toast', '收蛋失敗，請稍後再試');
     } finally {
       // 最後一步：重建面板（按鈕狀態會被 refreshCoopPanelStatus 正確還原）
-      this.refreshCoopPanelStatus(panelEl);
+      this.refreshCoopPanelStatus();
     }
   }
 
   // ── DEV 立即產蛋 handler ──
-  private handleDevInstantEgg(panelEl: HTMLDivElement) {
+  private handleDevInstantEgg() {
     const raw = localStorage.getItem('tlo_farm_chicken_coop');
     if (!raw) return;
     const data = JSON.parse(raw);
@@ -3070,7 +3130,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     data.feedingStatus = 'none';
     data.lastFedAt = null;
     localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify(data));
-    this.refreshCoopPanelStatus(panelEl);
+    this.refreshCoopPanelStatus();
     this.events.emit('game-toast', `測試產生 ${adultCount} 顆雞蛋`);
   }
 
@@ -3160,10 +3220,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 點雞舍開面板：必須先從 API 取最新狀態，再 render
   private async openChickenCoopPanel() {
     console.log('[COOP PANEL OPEN]');
-    // ── 一律先清乾淨舊面板（只清 UI，不刷資料）──
-    this.closeChickenCoopPanel();
-    // 避免重複開啟（closeChickenCoopPanel 已清，double-check）
-    if (this._coopPanelEl) return;
+    // ── flag 設在所有 async/DOM 操作完成前，防止 backdrop/esc 在建立期間觸發 close ──
+    this._coopOpening = true;
+    // ── 有舊面板才清（避免重複開啟）──
+    if (this._coopPanelEl) {
+      this._forceCloseCoopPanel();
+    }
 
     // 記錄點擊前雞舍 sprite 狀態
     if (this.chickenCoopSprite) {
@@ -3222,8 +3284,17 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       top: 0; left: 0; right: 0; bottom: 0;
       z-index: 9998;
       background: rgba(0,0,0,0.3);
+      pointer-events: auto;
     `;
-    backdrop.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); this.closeChickenCoopPanel(); });
+    backdrop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      // 只在點到純 backdrop（不是 panel）時關閉
+      if (e.target !== backdrop) { console.log('[COOP BACKDROP IGNORED] not backdrop target'); return; }
+      if (this._coopOpening) { console.warn('[COOP BACKDROP IGNORED] opening'); return; }
+      if (!this._coopPanelEl || !document.body.contains(this._coopPanelEl)) { console.warn('[COOP BACKDROP IGNORED] no panel'); return; }
+      this.closeChickenCoopPanel('backdrop');
+    });
     backdrop.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); });
     backdrop.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
 
@@ -3243,8 +3314,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       color: #3B2412;
       z-index: 9999;
       box-shadow: 4px 4px 0 rgba(0,0,0,0.2);
+      pointer-events: auto;
     `;
-    panel.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
+    // panel 的 click 進到 bindChickenCoopPanelEvents 的 delegation handler
+    // 這裡只阻止事件穿透到 Phaser canvas，不攔截按鈕
+    panel.addEventListener('click', (e) => { e.stopPropagation(); });
     panel.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); });
     panel.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
 
@@ -3278,11 +3352,20 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       hasProducing,
       minRemainingSec: this.getCoopMinRemainingSec(),
     });
-    this.bindChickenCoopPanelEvents();
-    console.log('[INIT PANEL] using API slots — animalCount:', apiAnimalCount, 'adultCount:', apiAdultCount, 'babyCount:', apiBabyCount, 'capacity:', apiCapacity);
-    // ── 註冊 Esc handler（只掛一次）──
-    this._coopEscHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { console.log('[COOP PANEL ESC]'); this.closeChickenCoopPanel(); } };
-    document.addEventListener('keydown', this._coopEscHandler);
+    // ── 移除舊 Esc listener，再註冊新的（防止重複累積）──
+    if (this._coopEscHandler) {
+      document.removeEventListener('keydown', this._coopEscHandler);
+      this._coopEscHandler = null;
+    }
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (this._coopOpening) { console.warn('[COOP ESC IGNORED] opening'); return; }
+      if (!this._coopPanelEl || !document.body.contains(this._coopPanelEl)) { console.warn('[COOP ESC IGNORED] no panel'); return; }
+      console.log('[COOP PANEL ESC]');
+      this.closeChickenCoopPanel('esc');
+    };
+    this._coopEscHandler = escHandler;
+    document.addEventListener('keydown', escHandler);
     // 面板 DOM 建立完成後，用統一計時器啟動倒計時
     this.startCoopCountdownTimer();
     this._coopListenersInitialized = true;
@@ -3296,6 +3379,26 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       container.appendChild(panel);
     }
     this._coopPanelEl = panel;
+    // ── 確認 panel 已進 DOM 之後，再 bind 按鈕事件 ──
+    const panelForBind = document.getElementById('coop-panel');
+    console.log('[COOP PANEL EXISTS]', !!panelForBind);
+    this.bindChickenCoopPanelEvents();
+    // 面板進 DOM 之後，印出 DOM 狀態供驗證
+    console.log('[COOP PANEL DOM CHECK]', {
+      panelInDocument: panel ? document.body.contains(panel) : false,
+      backdropZIndex: backdrop.style.zIndex,
+      panelZIndex: panel.style.zIndex,
+      backdropInBody: backdrop ? document.body.contains(backdrop) : false,
+      buttons: panel
+        ? [...panel.querySelectorAll('button')].map(btn => ({
+            text: btn.textContent?.trim(),
+            action: btn.dataset.action,
+            disabled: btn.disabled,
+            id: btn.id,
+          }))
+        : [],
+    });
+    this._coopOpening = false;
   }
 
   // ── Phase5: 取得雞舍內可活動區域(小雞走路範圍)──
@@ -3489,10 +3592,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     }
   }
 
-  // ── 關閉雞舍管理面板 ──
-  private closeChickenCoopPanel() {
-    console.log('[COOP PANEL CLOSE EXECUTE]');
-    // 清除倒數計時器
+  // ── 實際執行面板關閉（不碰 _coopOpening flag）──
+  private _forceCloseCoopPanel() {
     if (this._coopCountdownInterval !== null) {
       clearInterval(this._coopCountdownInterval);
       this._coopCountdownInterval = null;
@@ -3507,12 +3608,17 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this._coopBackdropEl.remove();
       this._coopBackdropEl = undefined;
     }
-    // 移除 Esc listener
     if (this._coopEscHandler) {
       document.removeEventListener('keydown', this._coopEscHandler);
       this._coopEscHandler = null;
     }
-    console.log('[COOP PANEL CLEANED]');
+  }
+
+  // ── 關閉雞舍管理面板（給外部 caller 用）──
+  private closeChickenCoopPanel(reason = 'unknown') {
+    console.warn('[COOP PANEL CLOSE EXECUTE]', { reason });
+    this._forceCloseCoopPanel();
+    this._coopOpening = false;
   }
 
   // ── 共用 API 放置處理(DOM click 與 Phaser pointerdown 共用)──

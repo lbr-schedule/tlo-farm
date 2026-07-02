@@ -45,24 +45,6 @@ const DAILY_TASKS = [
   },
   {
     id: 2,
-    key: 'plant_any',
-    title: '播種作物',
-    description: '播種 10 次',
-    target: 10,
-    rewardCoins: 80,
-    rewardExp: 15,
-  },
-  {
-    id: 3,
-    key: 'water_any',
-    title: '澆水作物',
-    description: '澆水 15 次',
-    target: 15,
-    rewardCoins: 80,
-    rewardExp: 15,
-  },
-  {
-    id: 4,
     key: 'harvest_wheat',
     title: '收成小麥',
     description: '收成 10 個小麥',
@@ -71,7 +53,7 @@ const DAILY_TASKS = [
     rewardExp: 20,
   },
   {
-    id: 5,
+    id: 3,
     key: 'harvest_any',
     title: '收成任意作物',
     description: '收成 20 個任意作物',
@@ -80,7 +62,7 @@ const DAILY_TASKS = [
     rewardExp: 30,
   },
   {
-    id: 6,
+    id: 4,
     key: 'complete_order',
     title: '完成訂單',
     description: '完成 3 次訂單配送',
@@ -113,9 +95,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const todayStart = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) - (8 * 60 * 60 * 1000);
     const todayEnd = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
 
-    console.log(`[TASKS GET DEBUG] userId=${userId} todayStr=${todayStr} todayStart=${todayStart} todayEnd=${todayEnd} now=${Date.now()}`);
-    console.log(`[TASKS GET RAW PROGRESS]`, { userId, todayStart, todayEnd, rows: progressResult.rows });
-
     // 查詢今日進度（updated_at 存的是毫秒，用範圍查詢，取每個 task_key 最新的記錄）
     const progressResult = await db.execute(
       `SELECT tp.task_key as taskKey, tp.progress, tp.claimed, tp.updated_at as updatedAt
@@ -130,7 +109,17 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       [userId, todayStart, todayEnd, userId, todayStart, todayEnd]
     );
 
-    console.log(`[TASKS GET PROGRESS RAW] rows=`, JSON.stringify(progressResult.rows));
+    console.warn('[GET TASKS DATE RANGE]', {
+      userId,
+      now: Date.now(),
+      todayStart,
+      todayEnd,
+      todayStartISO: new Date(todayStart).toISOString(),
+      todayEndISO: new Date(todayEnd).toISOString(),
+    });
+    console.warn('[GET TASKS DB ROWS]', {
+      rows: progressResult.rows,
+    });
 
     const progressMap: Record<string, { progress: number; claimed: boolean }> = {};
     for (const row of progressResult.rows || []) {
@@ -150,10 +139,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       };
     });
 
-    const hw = tasks.find(t => t.key === 'harvest_wheat');
-    const ha = tasks.find(t => t.key === 'harvest_any');
-    console.log(`[TASKS GET FINAL]`, { harvest_wheat: hw?.progress, harvest_any: ha?.progress });
-
     return res.json({ success: true, tasks });
   } catch (error) {
     console.error('取得任務錯誤:', error);
@@ -171,7 +156,7 @@ router.post('/progress', async (req: AuthRequest, res: Response) => {
     }
 
     const { type, cropId } = req.body;
-    // type: 'plant' | 'water' | 'harvest' | 'complete_order'
+    // type: 'harvest' | 'complete_order'
     // cropId: 1=小麥, 2=玉米, 3=紅蘿蔔, 4=馬鈴薯
 
     if (!type) {
@@ -189,11 +174,7 @@ router.post('/progress', async (req: AuthRequest, res: Response) => {
     // 確定要更新的 task keys
     const taskKeys: string[] = [];
 
-    if (type === 'plant') {
-      taskKeys.push('plant_any');
-    } else if (type === 'water') {
-      taskKeys.push('water_any');
-    } else if (type === 'harvest') {
+    if (type === 'harvest') {
       // 收成任意作物
       taskKeys.push('harvest_any');
       // 如果是小麥 (cropId=1)，也更新收成小麥
@@ -403,6 +384,41 @@ router.post('/:id/claim', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('領取獎勵錯誤:', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
+// DEBUG endpoint - 直接查 task_progress，無需 auth
+router.get('/debug-progress', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = 35;
+    const today = new Date();
+    const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+    const [ty, tm, td] = taipeiDateStr.split('-').map(Number);
+    const todayStart = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) - (8 * 60 * 60 * 1000);
+    const todayEnd = Date.UTC(ty, tm - 1, td, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
+
+    const allRows = await db.execute(
+      `SELECT * FROM task_progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`,
+      [userId]
+    );
+    const rangedRows = await db.execute(
+      `SELECT * FROM task_progress WHERE user_id = ? AND updated_at >= ? AND updated_at <= ? ORDER BY updated_at DESC`,
+      [userId, todayStart, todayEnd]
+    );
+    const harvestRows = await db.execute(
+      `SELECT *, typeof(updated_at) as updated_at_type FROM task_progress WHERE user_id = ? AND task_key IN ('harvest_wheat', 'harvest_any', 'complete_order', 'login') ORDER BY updated_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      debug: true,
+      params: { userId, todayStart, todayEnd, todayStartISO: new Date(todayStart).toISOString(), todayEndISO: new Date(todayEnd).toISOString() },
+      allRows: allRows.rows,
+      rangedRows: rangedRows.rows,
+      harvestRows: harvestRows.rows,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

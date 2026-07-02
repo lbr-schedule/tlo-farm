@@ -24,7 +24,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     let filteredItems = itemsResult.rows || [];
     
     // 過濾類型
-    if (type && (type === 'seed' || type === 'crop' || type === 'item' || type === 'livestock')) {
+    if (type && (type === 'seed' || type === 'crop' || type === 'item' || type === 'livestock' || type === 'fertilizer')) {
       filteredItems = filteredItems.filter((item: any) => item.itemType === type);
     }
 
@@ -41,8 +41,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     if (itemIds.length > 0) {
       const placeholders = itemIds.map(() => '?').join(',');
       
-      if (type === 'item') {
-        // 查詢 items 表格
+      if (type === 'item' || type === 'fertilizer') {
+        // 查詢 items 表格（道具和肥料都在 items 表）
         const itemResult = await db.execute(
           `SELECT id, name_zh_tw as nameZhTw, sell_price as sellPrice, sprite FROM items WHERE id IN (${placeholders})`,
           itemIds

@@ -212,7 +212,7 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
 
     // 檢查道具是否存在
     const itemResult = await db.execute(
-      `SELECT id, name_zh_tw as nameZhTw, buy_price as buyPrice, sell_price as sellPrice, required_level as requiredLevel FROM items WHERE id = ?`,
+      `SELECT id, name_zh_tw as nameZhTw, item_type as itemType, buy_price as buyPrice, sell_price as sellPrice, required_level as requiredLevel FROM items WHERE id = ?`,
       [itemId]
     );
     const item = itemResult.rows?.[0];
@@ -268,14 +268,15 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
     );
 
     // 增加道具到背包（upsert）
+    const inventoryItemType = item.itemType ?? 'item';
     const existingResult = await db.execute(
-      `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
-      [userId, itemId]
+      `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = ? AND item_id = ?`,
+      [userId, inventoryItemType, itemId]
     );
     const existingItem = existingResult.rows?.[0];
     const beforeAmount = existingItem?.amount ?? 0;
     console.log('[BUY-ITEM INVENTORY UPSERT]', {
-      userId, itemId, itemType: 'item',
+      userId, itemId, inventoryItemType,
       before_quantity: beforeAmount,
       totalCost, gold_before: user.gold, gold_after: user.gold - totalCost,
     });
@@ -287,15 +288,15 @@ router.post('/buy-item', async (req: AuthRequest, res: Response) => {
       );
     } else {
       await db.execute(
-        `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'item', ?, ?)`,
-        [userId, itemId, amount]
+        `INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, ?, ?, ?)`,
+        [userId, inventoryItemType, itemId, amount]
       );
     }
 
     // 取得更新後的庫存
     const afterResult = await db.execute(
-      `SELECT id, user_id as userId, item_type as itemType, item_id as itemId, amount FROM inventories WHERE user_id = ? AND item_type = 'item' AND item_id = ?`,
-      [userId, itemId]
+      `SELECT id, user_id as userId, item_type as itemType, item_id as itemId, amount FROM inventories WHERE user_id = ? AND item_type = ? AND item_id = ?`,
+      [userId, inventoryItemType, itemId]
     );
     const updatedInventoryRow = afterResult.rows?.[0] ?? null;
     const afterAmount = updatedInventoryRow?.amount ?? beforeAmount + amount;

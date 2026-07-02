@@ -7,8 +7,8 @@ const DEBUG = false;
 const router = Router();
 
 // 更新任務進度的輔助函數
-async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'harvest' | 'complete_order', cropId?: number) {
-  console.log(`[TASK UPDATE ENTER]`, { userId, type, cropId });
+// amount = 這次收成的數量（harvestYield），用來增加 progress
+async function updateTaskProgress(userId: number, type: 'harvest' | 'complete_order', cropId: number | undefined, amount: number = 1) {
   try {
     const today = new Date();
     const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
@@ -17,11 +17,7 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
     const todayEnd = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
 
     const taskKeys: string[] = [];
-    if (type === 'plant') {
-      taskKeys.push('plant_any');
-    } else if (type === 'water') {
-      taskKeys.push('water_any');
-    } else if (type === 'harvest') {
+    if (type === 'harvest') {
       taskKeys.push('harvest_any');
       if (cropId === 1) taskKeys.push('harvest_wheat');
     } else if (type === 'complete_order') {
@@ -29,8 +25,6 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
     }
 
     const taskTargets: Record<string, number> = {
-      'plant_any': 10,
-      'water_any': 15,
       'harvest_wheat': 10,
       'harvest_any': 20,
       'complete_order': 3,
@@ -40,32 +34,38 @@ async function updateTaskProgress(userId: number, type: 'plant' | 'water' | 'har
       const target = taskTargets[taskKey];
       if (!target) continue;
 
-      const existingResult = await db.execute(
-        `SELECT id, progress FROM task_progress
-         WHERE user_id = ? AND task_key = ? AND updated_at >= ? AND updated_at <= ?`,
-        [userId, taskKey, todayStart, todayEnd]
-      );
+      const selectSql = `SELECT id, progress FROM task_progress WHERE user_id = ? AND task_key = ? AND updated_at >= ? AND updated_at <= ?`;
+      console.warn('[TASK SELECT SQL]', { sql: selectSql, args: [userId, taskKey, todayStart, todayEnd] });
+      const existingResult = await db.execute(selectSql, [userId, taskKey, todayStart, todayEnd]);
       const existing = existingResult.rows?.[0];
 
       if (existing) {
-        const newProgress = Math.min(existing.progress + 1, target);
-        console.log(`[TASK PROGRESS UPDATE] task_key=${taskKey} progress=${existing.progress} → ${newProgress}`);
+        const newProgress = Math.min(existing.progress + amount, target);
         await db.execute(
           `UPDATE task_progress SET progress = ?, updated_at = ? WHERE id = ?`,
           [newProgress, Date.now(), existing.id]
         );
-        console.log(`[TASK PROGRESS WRITE]`, { userId, type, cropId, taskKey, progressAfter: newProgress, updatedAt: Date.now() });
+        console.warn('[TASK PROGRESS UPDATE]', {
+          key: taskKey,
+          before: existing.progress,
+          add: amount,
+          after: newProgress,
+        });
       } else {
-        console.log(`[TASK PROGRESS INSERT] task_key=${taskKey} progress=0 → 1`);
-        await db.execute(
-          `INSERT INTO task_progress (user_id, task_key, progress, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
-          [userId, taskKey, Date.now(), Date.now()]
-        );
-        console.log(`[TASK PROGRESS WRITE]`, { userId, type, cropId, taskKey, progressAfter: 1, updatedAt: Date.now() });
+        const now = Date.now();
+        const insertProgress = Math.min(amount, target);
+        const insertSql = `INSERT INTO task_progress (user_id, task_key, progress, claimed, updated_at) VALUES (?, ?, ?, 0, ?)`;
+        console.warn('[TASK INSERT SQL]', { sql: insertSql, args: [userId, taskKey, insertProgress, now] });
+        await db.execute(insertSql, [userId, taskKey, insertProgress, now]);
+        console.warn('[TASK PROGRESS INSERT]', {
+          key: taskKey,
+          add: amount,
+          inserted: insertProgress,
+        });
       }
     }
-  } catch (e) {
-    console.error('[updateTaskProgress] error', e);
+  } catch (err) {
+    console.error('[TASK UPDATE ERROR]', { userId, type, cropId, err });
   }
 }
 
@@ -504,17 +504,24 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少參數' });
     }
 
+    console.warn('[PLANT SERVER START]', { userId, x, y, cropId });
+
+    // 1. 查 tile
     const tileRows = await db.execute(
-      `SELECT id, state FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`, [userId, x, y]
+      `SELECT id, x, y, state, crop_id as cropId FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
+      [userId, x, y]
     );
     if ((tileRows.rows || []).length === 0) {
       return res.status(404).json({ success: false, message: '土地不存在' });
     }
     const tile = tileRows.rows[0];
+    console.warn('[PLANT TILE BEFORE]', tile);
+
     if (tile.state !== 'empty') {
       return res.status(400).json({ success: false, message: '此地已有作物' });
     }
 
+    // 2. 驗證作物存在
     const cropResult = await db.execute(
       `SELECT id, name_zh_tw as name FROM crops WHERE id = ?`, [cropId]
     );
@@ -522,18 +529,57 @@ router.post('/plant', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: '無效的作物' });
     }
 
+    // 3. 檢查種子庫存 item_type='seed', item_id=cropId
+    const seedInvBefore = await db.execute(
+      `SELECT amount FROM inventories WHERE user_id = ? AND item_type = 'seed' AND item_id = ?`,
+      [userId, cropId]
+    );
+    const seedAmountBefore = seedInvBefore.rows?.[0]?.amount ?? 0;
+    console.warn('[PLANT SEED INVENTORY BEFORE]', { userId, itemType: 'seed', itemId: cropId, amount: seedAmountBefore });
+
+    if (seedAmountBefore < 1) {
+      return res.status(400).json({ success: false, message: '種子不足' });
+    }
+
+    // 4. 扣種子
+    const deductResult = await db.execute(
+      `UPDATE inventories SET amount = amount - 1 WHERE user_id = ? AND item_type = 'seed' AND item_id = ? AND amount > 0`,
+      [userId, cropId]
+    );
+    if ((deductResult.rowsAffected ?? 0) === 0) {
+      console.error('[PLANT] Seed deduction failed - no rows affected', { userId, cropId });
+      return res.status(500).json({ success: false, message: '伺服器錯誤' });
+    }
+
+    // 5. 更新農地
     const now = Date.now();
     const growTimeSec = 120;
     const finishAt = now + growTimeSec * 1000;
-
     await db.execute(
-      `UPDATE farm_tiles SET crop_id = ?, planted_at = ?, finish_at = ?, watered_at = ?, state = 'seed' WHERE id = ?`,
-      [cropId, now, finishAt, now, tile.id]
+      `UPDATE farm_tiles SET crop_id = ?, planted_at = ?, finish_at = ?, watered_at = NULL, fertilized_at = NULL, is_fertilized = 0, state = 'seed' WHERE id = ?`,
+      [cropId, now, finishAt, tile.id]
     );
 
-    await updateTaskProgress(userId, 'plant', cropId);
+    // 6. 回傳更新後 tile
+    const updatedTileRows = await db.execute(
+      `SELECT id, x, y, crop_id as cropId, state, planted_at as plantedAt, finish_at as finishAt, watered_at as wateredAt, is_fertilized as isFertilized, fertilized_at as fertilizedAt FROM farm_tiles WHERE id = ?`,
+      [tile.id]
+    );
+    const updatedTile = updatedTileRows.rows?.[0];
+    const seedAmountAfter = seedAmountBefore - 1;
+    const userRows = await db.execute(`SELECT gold FROM users WHERE id = ?`, [userId]);
+    const userGold = userRows.rows?.[0]?.gold ?? 0;
 
-    return res.json({ success: true, message: '播種成功', finishAt });
+    console.warn('[PLANT SERVER SUCCESS]', { userId, x, y, cropId, tileAfter: updatedTile, seedAmountAfter });
+
+    return res.json({
+      success: true,
+      message: '播種成功',
+      finishAt,
+      tile: updatedTile,
+      user: { gold: userGold },
+      inventory: { itemType: 'seed', itemId: cropId, amount: seedAmountAfter },
+    });
   } catch (error) {
     console.error('[POST /plant] error', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -547,6 +593,12 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
     if (!userId) return res.status(401).json({ success: false, message: '未授權' });
 
     const { x, y } = req.body;
+    console.warn('[HARVEST ROUTE VERSION]', {
+      version: '2026-07-01-cropId-task-progress',
+      userId,
+      x,
+      y,
+    });
     if (x === undefined || y === undefined) {
       return res.status(400).json({ success: false, message: '缺少座標' });
     }
@@ -569,12 +621,8 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '作物尚未成熟' });
     }
 
-    // 保存 cropId，避免後續操作後被覆蓋
-    const harvestedCropId = tile.cropId;
-    console.log(`[HARVEST TASK DEBUG BEFORE CLEAR] userId=${userId} x=${x} y=${y} cropIdBeforeClear=${harvestedCropId} state=${tile.state} finishAt=${tile.finishAt}`);
-
     const cropResult = await db.execute(
-      `SELECT name_zh_tw as name, harvest_yield as harvestYield, exp FROM crops WHERE id = ?`, [harvestedCropId]
+      `SELECT name_zh_tw as name, harvest_yield as harvestYield, exp FROM crops WHERE id = ?`, [tile.cropId]
     );
     const crop = cropResult.rows[0];
 
@@ -594,12 +642,12 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
 
     const invResult = await db.execute(
       `SELECT id, amount FROM inventories WHERE user_id = ? AND item_type = 'crop' AND item_id = ?`,
-      [userId, harvestedCropId]
+      [userId, tile.cropId]
     );
     if ((invResult.rows || []).length > 0) {
       await db.execute(`UPDATE inventories SET amount = amount + ? WHERE id = ?`, [harvestYield, invResult.rows[0].id]);
     } else {
-      await db.execute(`INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, ?)`, [userId, harvestedCropId, harvestYield]);
+      await db.execute(`INSERT INTO inventories (user_id, item_type, item_id, amount) VALUES (?, 'crop', ?, ?)`, [userId, tile.cropId, harvestYield]);
     }
 
     await db.execute(
@@ -609,16 +657,27 @@ router.post('/harvest', async (req: AuthRequest, res: Response) => {
       [tile.id]
     );
 
-    console.log(`[HARVEST TASK UPDATE CALL] userId=${userId} cropId=${harvestedCropId}`);
-    await updateTaskProgress(userId, 'harvest', harvestedCropId);
+    // 先保存 cropId，避免清空 tile 後讀不到
+    const harvestedCropId = tile.cropId;
+    const harvestedCropName = crop.name;
+    console.warn('[HARVEST TASK PROGRESS INPUT]', {
+      userId,
+      cropId: harvestedCropId,
+      cropName: harvestedCropName,
+      harvestYield,
+    });
+    await updateTaskProgress(userId, 'harvest', harvestedCropId, harvestYield);
 
-    console.log(`[HARVEST RESPONSE DEBUG] cropId=${harvestedCropId} cropName=${crop.name} harvestYield=${harvestYield}`);
-    return res.json({
+    const responseBody = {
       success: true,
-      harvest: { cropId: harvestedCropId, cropName: crop.name, harvestYield, exp: expReward },
+      cropId: harvestedCropId,
+      cropName: harvestedCropName,
+      harvest: { cropName: harvestedCropName, harvestYield, exp: expReward },
       exp: expReward,
       user: { level: newLevel, exp: newExp },
-    });
+    };
+    console.warn('[HARVEST RESPONSE BODY]', responseBody);
+    return res.json(responseBody);
   } catch (error) {
     console.error('[POST /harvest] error', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
@@ -636,8 +695,78 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少座標' });
     }
 
+    console.warn('[WATER SERVER START]', { userId, x, y });
+
+    // 查 tile：userId + x + y
     const tileRows = await db.execute(
-      `SELECT id, state, is_watered as isWatered FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
+      `SELECT id, x, y, crop_id as cropId, state, watered_at as wateredAt FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
+      [userId, x, y]
+    );
+
+    if ((tileRows.rows || []).length === 0) {
+      // tile 不存在，查該 user 所有 tile 協助 debug
+      const allTiles = await db.execute(`SELECT id, x, y, state, crop_id as cropId FROM farm_tiles WHERE user_id = ?`, [userId]);
+      console.error('[WATER TILE NOT FOUND]', { userId, x, y, body: req.body, allTilesForUser: allTiles.rows });
+      return res.status(400).json({ success: false, message: '土地不存在', debug: { userId, x, y, allTiles: allTiles.rows } });
+    }
+    const tile = tileRows.rows[0];
+    console.warn('[WATER TILE QUERY]', { userId, x, y, tile });
+
+    if (tile.state === 'empty') {
+      return res.status(400).json({ success: false, message: '此地無作物' });
+    }
+    if (tile.wateredAt) {
+      return res.status(400).json({ success: false, message: '今日已澆水' });
+    }
+
+    // 更新澆水狀態
+    const now = Date.now();
+    const newState = tile.state === 'dry' ? 'growing' : tile.state;
+    await db.execute(
+      `UPDATE farm_tiles SET watered_at = ?, state = ? WHERE id = ?`,
+      [now, newState, tile.id]
+    );
+
+    // 回傳更新後 tile
+    const updatedTileRows = await db.execute(
+      `SELECT id, x, y, crop_id as cropId, state, watered_at as wateredAt, is_fertilized as isFertilized, fertilized_at as fertilizedAt FROM farm_tiles WHERE id = ?`,
+      [tile.id]
+    );
+    const updatedTile = updatedTileRows.rows?.[0];
+    const isWatered = !!updatedTile.wateredAt;
+
+    console.warn('[WATER SERVER SUCCESS]', { tileAfter: updatedTile, isWatered });
+
+    return res.json({
+      success: true,
+      message: '澆水成功',
+      state: updatedTile.state,
+      wateredAt: updatedTile.wateredAt,
+      isWatered,
+      tile: updatedTile,
+    });
+  } catch (error) {
+    console.error('[POST /water] error', error);
+    return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
+// 施肥
+router.post('/fertilize', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ success: false, message: '未授權' });
+
+    const { x, y } = req.body;
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ success: false, message: '缺少座標' });
+    }
+
+    console.warn('[FERTILIZE SERVER START]', { userId, x, y });
+
+    // 查 tile
+    const tileRows = await db.execute(
+      `SELECT id, x, y, crop_id as cropId, state, is_fertilized as isFertilized FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
       [userId, x, y]
     );
     if ((tileRows.rows || []).length === 0) {
@@ -648,20 +777,129 @@ router.post('/water', async (req: AuthRequest, res: Response) => {
     if (tile.state === 'empty') {
       return res.status(400).json({ success: false, message: '此地無作物' });
     }
-    if (tile.isWatered) {
-      return res.status(400).json({ success: false, message: '今日已澆水' });
+    if (tile.isFertilized) {
+      return res.status(400).json({ success: false, message: '已施肥' });
+    }
+
+    // 查普通肥料庫存：item_type='fertilizer', item_id=1
+    const invRows = await db.execute(
+      `SELECT amount FROM inventories WHERE user_id = ? AND item_type = 'fertilizer' AND item_id = 1`,
+      [userId]
+    );
+    const foundAmount = invRows.rows?.[0]?.amount ?? 0;
+
+    // 查所有 item type 庫存協助 debug
+    const allInvRows = await db.execute(
+      `SELECT item_type, item_id, amount FROM inventories WHERE user_id = ? AND item_type = 'item'`,
+      [userId]
+    );
+    console.warn('[FERTILIZE INVENTORY DEBUG]', {
+      userId,
+      searchedItemType: 'item',
+      searchedItemId: 1,
+      foundAmount,
+      allItemRows: allInvRows.rows,
+    });
+
+    if (foundAmount < 1) {
+      return res.status(400).json({ success: false, message: '肥料不足' });
+    }
+
+    // 扣肥料
+    const deductResult = await db.execute(
+      `UPDATE inventories SET amount = amount - 1 WHERE user_id = ? AND item_type = 'fertilizer' AND item_id = 1 AND amount > 0`,
+      [userId]
+    );
+    if ((deductResult.rowsAffected ?? 0) === 0) {
+      console.error('[FERTILIZE] Deduction failed - no rows affected', { userId });
+      return res.status(500).json({ success: false, message: '伺服器錯誤' });
+    }
+
+    // 更新農地施肥狀態：state 改回 growing（解除營養不良/dry/needs_fertilizer）
+    const now = Date.now();
+    await db.execute(
+      `UPDATE farm_tiles SET is_fertilized = 1, fertilized_at = ?, state = 'growing', dry_started_at = NULL WHERE id = ?`,
+      [now, tile.id]
+    );
+
+    // 回傳更新後 tile（確保 tile 格式完整，client 不要再猜）
+    const updatedTileRows = await db.execute(
+      `SELECT id, x, y, crop_id as cropId, state, is_watered as isWatered, watered_at as wateredAt, is_fertilized as isFertilized, fertilized_at as fertilizedAt, dry_started_at as dryStartedAt FROM farm_tiles WHERE id = ?`,
+      [tile.id]
+    );
+    const updatedTile = updatedTileRows.rows?.[0];
+    const fertilizerAmountAfter = foundAmount - 1;
+
+    // 確保 explicit null：施肥成功後乾燥時間必定清除
+    if (updatedTile) {
+      updatedTile.dryStartedAt = null;
+
+      console.warn('[FERTILIZE TILE UPDATE]', {
+        beforeState: tile.state,
+        afterState: updatedTile.state,
+        isFertilized: updatedTile.isFertilized,
+        fertilizedAt: updatedTile.fertilizedAt,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: '施肥成功',
+      tile: updatedTile ?? null,
+      inventory: { itemType: 'fertilizer', itemId: 1, amount: fertilizerAmountAfter },
+    });
+  } catch (error) {
+    console.error('[POST /fertilize] error', error);
+    return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
+// 清除枯萎農地
+router.post('/clear-withered', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ success: false, message: '未授權' });
+
+    const { x, y } = req.body;
+    if (x === undefined || y === undefined) {
+      return res.status(400).json({ success: false, message: '缺少座標' });
+    }
+
+    const tileRows = await db.execute(
+      `SELECT id, state FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
+      [userId, x, y]
+    );
+    if ((tileRows.rows || []).length === 0) {
+      return res.status(404).json({ success: false, message: '土地不存在' });
+    }
+    const tile = tileRows.rows[0];
+
+    if (tile.state !== 'withered') {
+      return res.status(400).json({ success: false, message: '此地未枯萎' });
     }
 
     await db.execute(
-      `UPDATE farm_tiles SET watered_at = ?, is_watered = 1 WHERE user_id = ? AND x = ? AND y = ?`,
-      [Date.now(), userId, x, y]
+      `UPDATE farm_tiles SET crop_id = NULL, planted_at = NULL, finish_at = NULL, watered_at = NULL, fertilized_at = NULL, is_fertilized = 0, state = 'empty' WHERE id = ?`,
+      [tile.id]
     );
 
-    await updateTaskProgress(userId, 'water');
-
-    return res.json({ success: true, message: '澆水成功' });
+    return res.json({
+      success: true,
+      message: '已清除枯萎作物',
+      tile: {
+        x,
+        y,
+        cropId: null,
+        state: 'empty',
+        plantedAt: null,
+        finishAt: null,
+        wateredAt: null,
+        isFertilized: false,
+        fertilizedAt: null,
+      },
+    });
   } catch (error) {
-    console.error('[POST /water] error', error);
+    console.error('[POST /clear-withered] error', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
   }
 });
@@ -716,6 +954,41 @@ router.post('/reset', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('[reset] error', error);
     return res.status(500).json({ success: false, message: '伺服器錯誤' });
+  }
+});
+
+// DEBUG: 直接查 task_progress 用相同參數
+router.get('/debug-task-progress', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = 35;
+    const today = new Date();
+    const taipeiDateStr = today.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+    const [year, month, day] = taipeiDateStr.split('-').map(Number);
+    const todayStart = Date.UTC(year, month - 1, day, 0, 0, 0, 0) - (8 * 60 * 60 * 1000);
+    const todayEnd = Date.UTC(year, month - 1, day, 0, 0, 0, 0) + (16 * 60 * 60 * 1000) - 1;
+
+    const allRows = await db.execute(
+      `SELECT * FROM task_progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`,
+      [userId]
+    );
+    const rangedRows = await db.execute(
+      `SELECT * FROM task_progress WHERE user_id = ? AND updated_at >= ? AND updated_at <= ? ORDER BY updated_at DESC`,
+      [userId, todayStart, todayEnd]
+    );
+    const harvestRows = await db.execute(
+      `SELECT *, typeof(updated_at) as updated_at_type FROM task_progress WHERE user_id = ? AND task_key IN ('harvest_wheat', 'harvest_any') ORDER BY updated_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      debug: true,
+      params: { userId, todayStart, todayEnd, todayStartISO: new Date(todayStart).toISOString(), todayEndISO: new Date(todayEnd).toISOString() },
+      allRows: allRows.rows,
+      rangedRows: rangedRows.rows,
+      harvestRows: harvestRows.rows,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

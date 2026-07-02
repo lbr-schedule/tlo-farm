@@ -4,6 +4,7 @@
 // ============================================================
 
 const DEBUG = false;
+console.log('[inventoryIcons VERSION] 2026-07-01-fertilizer-icon');
 // ============================================================
 // 背包道具圖示映射（統一管理）
 // 圖示路徑與商店 SeedShopModal 一致
@@ -113,6 +114,25 @@ export function getInventoryIcon(item: {
       itemId: item.itemId,
       name: item.name,
       sprite: item.sprite,
+    });
+    return FALLBACK_ICON;
+  }
+
+  // ── fertilizer ──
+  if (item.itemType === 'fertilizer') {
+    if (item.itemId && itemIconById[item.itemId]) {
+      return itemIconById[item.itemId]!;
+    }
+    if (item.sprite && itemIconByName[item.sprite]) {
+      return itemIconByName[item.sprite]!;
+    }
+    if (item.name && itemIconByName[item.name]) {
+      return itemIconByName[item.name]!;
+    }
+    console.warn('[BACKPACK ICON MISSING]', {
+      itemType: item.itemType,
+      itemId: item.itemId,
+      name: item.name,
     });
     return FALLBACK_ICON;
   }

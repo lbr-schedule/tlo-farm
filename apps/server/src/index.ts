@@ -25,6 +25,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// 臨時診斷：所有請求都 log
+app.use((req, _res, next) => {
+  console.warn('[SERVER HIT]', req.method, req.url, 'origin:', req.get('origin'), 'host:', req.get('host'));
+  next();
+});
+
 // 開放上傳資料夾（開發環境用）
 const UPLOADS_DIR = path.join(process.cwd(), '../client/public/uploads');
 app.use('/uploads', express.static(UPLOADS_DIR));

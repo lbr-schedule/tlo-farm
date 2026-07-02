@@ -4,6 +4,7 @@ import { backpackSystem, BackpackItem } from '../../systems/BackpackSystem';
 import { getInventoryIcon, FALLBACK_ICON } from '../../utils/inventoryIcons';
 
 const DEBUG = false;
+console.log('[BackpackModal VERSION] 2026-07-01-fertilizer-dedup');
 console.log('[FERTILIZER ICON FIX ACTIVE] BackpackModal');
 
 interface BackpackModalProps {
@@ -38,7 +39,26 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
       if (activeTab === 'seed') list = state.seeds;
       else if (activeTab === 'crop') list = state.crops;
       else if (activeTab === 'livestock') list = state.livestock.filter(i => i.itemId !== 2);
-      else if (activeTab === 'item') list = state.items;
+      else if (activeTab === 'item') {
+        // 合併 items + fertilizers，過濾 amount <= 0，以 itemId 去重（保留 amount 最大的）
+        const merged = [...state.items, ...state.fertilizers];
+        const beforeMerge = merged.filter(i => (i.amount ?? 0) > 0);
+        const seen = new Map<number, BackpackItem>();
+        for (const item of beforeMerge) {
+          const existing = seen.get(item.itemId);
+          if (!existing || (item.amount ?? 0) > (existing.amount ?? 0)) {
+            seen.set(item.itemId, item);
+          }
+        }
+        const afterDedup = Array.from(seen.values());
+        console.log('[BACKPACK ITEM TAB SOURCES]', {
+          items: state.items,
+          fertilizers: state.fertilizers,
+          beforeMerge,
+          afterDedup,
+        });
+        list = afterDedup;
+      }
       if (DEBUG) { console.log('[BACKPACK MODAL DATA]', { seeds: state.seeds, crops: state.crops, items: state.items, loading: state.loading }); }
       setItems(list);
       setLoading(state.loading);
@@ -49,6 +69,7 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
         ...state.crops,
         ...state.livestock.filter(i => i.itemId !== 2),
         ...state.items,
+        ...state.fertilizers,
       ];
       setTotalUsed(all.filter(i => (i.amount ?? 0) > 0).length);
     });

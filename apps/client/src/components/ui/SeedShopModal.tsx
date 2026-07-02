@@ -83,13 +83,16 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
       if (DEBUG) { console.log('[SEED SHOP BACKPACK STATE]', {
         seeds: state.seeds,
         crops: state.crops,
-        items: state.items
+        items: state.items,
+        fertilizers: state.fertilizers,
       }); }
       const sCounts: Record<number, number> = {};
       (state.seeds ?? []).forEach(s => { sCounts[s.itemId] = s.amount; });
       setSeedCounts(sCounts);
+      // 合併 items 和 fertilizers 的持有數（普通肥料 itemId=1 在 fertilizers，普通飼料 itemId=2 在 items）
       const iCounts: Record<number, number> = {};
       (state.items ?? []).forEach(i => { iCounts[i.itemId] = i.amount; });
+      (state.fertilizers ?? []).forEach(f => { iCounts[f.itemId] = (iCounts[f.itemId] ?? 0) + f.amount; });
       setItemCounts(iCounts);
       const feedItem = (state.items ?? []).find(i => i.itemId === 2);
       console.log('[5173 FEED INVENTORY COUNT AFTER]', { feedItem, feedCountSet: feedItem?.amount ?? 0, allItems: state.items });

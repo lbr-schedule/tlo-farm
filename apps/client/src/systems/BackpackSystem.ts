@@ -7,7 +7,7 @@ import { CropData } from '../scenes/FarmScene';
 
 export interface BackpackItem {
   id: number;
-  itemType: 'seed' | 'crop' | 'item' | 'livestock';
+  itemType: 'seed' | 'crop' | 'item' | 'livestock' | 'fertilizer';
   itemId: number;
   amount: number;
   name: string;
@@ -20,6 +20,7 @@ export interface BackpackState {
   seeds: BackpackItem[];
   crops: BackpackItem[];
   items: BackpackItem[];
+  fertilizers: BackpackItem[];
   livestock: BackpackItem[];
   loading: boolean;
   error: string | null;
@@ -87,6 +88,7 @@ class BackpackSystem {
     seeds: [],
     crops: [],
     items: [],
+    fertilizers: [],
     livestock: [],
     loading: false,
     error: null,
@@ -154,6 +156,7 @@ class BackpackSystem {
       seeds: this.state.seeds ?? [],
       crops: this.state.crops ?? [],
       items: this.state.items ?? [],
+      fertilizers: this.state.fertilizers ?? [],
       livestock: this.state.livestock ?? [],
       loading: this.state.loading,
       error: this.state.error,
@@ -167,6 +170,7 @@ class BackpackSystem {
       seeds: this.state.seeds ?? [],
       crops: this.state.crops ?? [],
       items: this.state.items ?? [],
+      fertilizers: this.state.fertilizers ?? [],
       livestock: this.state.livestock ?? [],
       loading: this.state.loading,
       error: this.state.error,
@@ -185,10 +189,11 @@ class BackpackSystem {
   async fetchAll() {
     this.setState({ loading: true, error: null });
     try {
-      const [seeds, crops, items, apiLivestock] = await Promise.all([
+      const [seeds, crops, items, fertilizers, apiLivestock] = await Promise.all([
         this.fetchItems('seed'),
         this.fetchItems('crop'),
         this.fetchItems('item'),
+        this.fetchItems('fertilizer'),
         this.fetchItems('livestock'),
       ]);
 //       console.log('[BACKPACK LIVESTOCK RAW SERVER]', JSON.parse(JSON.stringify(apiLivestock)));
@@ -210,13 +215,13 @@ class BackpackSystem {
       }
       const mergedLivestock = Array.from(mergedMap.values());
 //       console.log('[BACKPACK LIVESTOCK FINAL STATE]', JSON.parse(JSON.stringify(mergedLivestock)));
-      this.setState({ seeds, crops, items, livestock: mergedLivestock, loading: false });
+      this.setState({ seeds, crops, items, fertilizers, livestock: mergedLivestock, loading: false });
     } catch (err: any) {
       this.setState({ loading: false, error: err.message, livestock: this.state.livestock });
     }
   }
 
-  async fetchItems(type: 'seed' | 'crop' | 'item' | 'livestock', page = 1, limit = 50): Promise<BackpackItem[]> {
+  async fetchItems(type: 'seed' | 'crop' | 'item' | 'livestock' | 'fertilizer', page = 1, limit = 50): Promise<BackpackItem[]> {
     const res = await authFetch(`/api/inventory?type=${type}&page=${page}&limit=${limit}`);
     const data = await res.json();
         if (!data.success) throw new Error(data.message || '取得背包失敗');
@@ -233,11 +238,12 @@ class BackpackSystem {
   // 從背包扣除物品（本地樂觀更新）
   // 注意：這個函式只做本地樂觀更新，不打 API
   // API 呼叫和同步由呼叫端（如 plantCrop）處理
-  deductItem(itemType: 'seed' | 'crop' | 'item' | 'livestock', itemId: number): boolean {
+  deductItem(itemType: 'seed' | 'crop' | 'item' | 'livestock' | 'fertilizer', itemId: number): boolean {
     let items: BackpackItem[];
     if (itemType === 'seed') items = this.state.seeds;
     else if (itemType === 'crop') items = this.state.crops;
     else if (itemType === 'livestock') items = this.state.livestock;
+    else if (itemType === 'fertilizer') items = this.state.fertilizers;
     else items = this.state.items;
     
     const idx = items.findIndex(i => i.itemId === itemId && i.amount > 0);
@@ -255,6 +261,8 @@ class BackpackSystem {
     } else if (itemType === 'livestock') {
       this.setState({ livestock: updated });
       this.saveLivestockLocal();
+    } else if (itemType === 'fertilizer') {
+      this.setState({ fertilizers: updated });
     } else {
       this.setState({ items: updated });
     }
@@ -263,11 +271,12 @@ class BackpackSystem {
   }
 
   // 補償：加回物品到背包（只用於 revert 失敗的操作，不打 API）
-  addItem(itemType: 'seed' | 'crop' | 'item' | 'livestock', itemId: number): void {
+  addItem(itemType: 'seed' | 'crop' | 'item' | 'livestock' | 'fertilizer', itemId: number): void {
     let items: BackpackItem[];
     if (itemType === 'seed') items = this.state.seeds;
     else if (itemType === 'crop') items = this.state.crops;
     else if (itemType === 'livestock') items = this.state.livestock;
+    else if (itemType === 'fertilizer') items = this.state.fertilizers;
     else items = this.state.items;
     
     const idx = items.findIndex(i => i.itemId === itemId);
@@ -293,6 +302,8 @@ class BackpackSystem {
     } else if (itemType === 'livestock') {
       this.setState({ livestock: updated });
       this.saveLivestockLocal();
+    } else if (itemType === 'fertilizer') {
+      this.setState({ fertilizers: updated });
     } else {
       this.setState({ items: updated });
     }
