@@ -18,6 +18,12 @@ import {
 } from '../systems/crop/CropConfig';
 import type { TileData } from '../systems/crop/TileTypes';
 import { computeCropState } from '../systems/crop/CropStateManager';
+import {
+  validateCanPlant,
+  createOptimisticPlantState,
+  applyOptimisticPlant,
+  rollbackPlant,
+} from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
 // TODO: migrate importers to import from CropConfig directly
@@ -985,48 +991,23 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ============================================================
-  // 播種(含樂觀更新)
+  // 播種(含樂觀更新) — M002.5: 狀態邏輯委托 CropSystem
   // ============================================================
   private async plantCrop(index: number, cropId: number) {
-    const state = this.farmState.get(index);
-    if (!state) {
-      console.error('[FarmScene] plantCrop FAILED: state is null for index=', index);
-      return;
-    }
-    if (state.cropState !== 'empty') {
-      console.warn('[FarmScene] 播種失敗:農地不是空的', state.cropState);
-      return;
-    }
+    // 驗證
+    const validation = validateCanPlant(this.farmState, index, cropId);
+    if (!validation.valid) return;
+    const originalState = validation.originalState;
 
+    // 建立並寫入樂觀狀態
+    const optimisticState = createOptimisticPlantState(cropId, originalState);
+    applyOptimisticPlant(this.farmState, index, optimisticState);
 
-    // ── 樂觀更新:立即顯示幼苗 ──
-    const now = Date.now();
-    const cropInfo = getCropDetails(cropId);
-    const growTimeMs = (cropInfo?.growTimeSec || 60) * 1000;
-
-    this.farmState.set(index, {
-      ...state,
-      cropId,
-      plantedAt: now,
-      finishAt: now + growTimeMs,
-      wateredAt: undefined,
-      isWatered: false,
-      isFertilized: 0,
-      fertilizedAt: undefined,
-      cropStatus: 'needs_water',
-      state: 'growing',
-      cropState: 'growing',
-      soilState: 'dry',
-      dryStartedAt: undefined,
-      careCheckAt: now + 10000, // 播種後 10 秒才開始檢查照顧條件
-    });
-
-
-    //立即更新視覺(馬上顯示幼苗)
+    // UI 更新（FarmScene 自行處理）
     this.updateFarmTileVisual(index, 'plantCrop');
     this.showProgressBar(index);
 
-    // 扣除背包(本地)
+    // 扣除背包（FarmScene 自行處理）
     backpackSystem.deductItem('seed', cropId);
 
     // ── 伺服器同步 ──
@@ -1039,40 +1020,30 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const data = await res.json();
       if (data.success) {
         const plantedAt = typeof data.tile.plantedAt === 'number' ? data.tile.plantedAt : new Date(data.tile.plantedAt).getTime();
+        // 同步 server tile（FarmScene 自行更新）
         this.farmState.set(index, {
-          ...state,
-          cropId,
+          ...this.farmState.get(index)!,
           plantedAt,
           finishAt: data.tile.finishAt,
-          wateredAt: undefined,
-          isWatered: false,
-          isFertilized: 0,
-          fertilizedAt: undefined,
-          cropStatus: 'needs_water',
-          state: 'growing',
-          cropState: 'growing',
-          soilState: 'dry',
-          dryStartedAt: undefined,
           careCheckAt: plantedAt + 10000,
         });
         this.events.emit('goldChanged', data.user.gold);
         this.events.emit('userUpdated', data.user);
-              } else {
+      } else {
         console.warn('[FarmScene] 播種失敗:', data.message);
-        // 回滾:恢復農地狀態
-        this.farmState.set(index, { ...state, state: 'empty', cropState: 'empty', soilState: 'dry' });
-        this.updateFarmTileVisual(index);
+        // 回滾（CropSystem）+ UI 恢復（FarmScene）
+        rollbackPlant(this.farmState, index, originalState);
         this.hideProgressBar(index);
+        this.updateFarmTileVisual(index);
         // 補償:恢復背包種子
         backpackSystem.addItem('seed', cropId);
       }
     } catch (err) {
       console.error('[FarmScene] 播種錯誤', err);
       // 網路錯誤:回滾並補償
-      this.farmState.set(index, { ...state, state: 'empty', cropState: 'empty', soilState: 'dry' });
-      this.updateFarmTileVisual(index);
+      rollbackPlant(this.farmState, index, originalState);
       this.hideProgressBar(index);
-      // 補償:恢復背包種子
+      this.updateFarmTileVisual(index);
       backpackSystem.addItem('seed', cropId);
     }
   }
