@@ -3,7 +3,7 @@ const DEBUG = false;
 // BackpackSystem - 背包系統
 // 管理背包中的物品（種子、農作物、道具），與伺服器 API 同步
 
-import { CropData } from '../scenes/FarmScene';
+import { CropData } from './crop/CropConfig';
 
 export interface BackpackItem {
   id: number;

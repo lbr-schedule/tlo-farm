@@ -1,14 +1,26 @@
 import Phaser from 'phaser';
 import { backpackSystem } from '../systems/BackpackSystem';
 import { authFetch } from '../utils/api';
+import {
+  TILE_SIZE,
+  GRID_WIDTH,
+  GRID_HEIGHT,
+  TILE_TYPES,
+  GrowthStage,
+  CROP_SPRITES,
+  CROP_STAGE_VISUAL_OFFSET,
+  CROP_ID_TO_KEY,
+  CROP_KEY_TO_ID,
+  CropData,
+  getCropDetails,
+  getAllCropDetails,
+  setupCropCache,
+} from '../systems/crop/CropConfig';
 
-const DEBUG = false;
-const DEBUG_FARM = false;
-const DEBUG_COOP = false;
-
-
-// 開發模式：跳過產蛋倒計時（測試完改 false）
-const DEBUG_SKIP_EGG_TIMER = false;
+// Re-export so existing importers still work
+// TODO: migrate importers to import from CropConfig directly
+export { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT, TILE_TYPES, CROP_SPRITES, CROP_STAGE_VISUAL_OFFSET, CROP_ID_TO_KEY, CROP_KEY_TO_ID, getCropDetails };
+export type { CropData, GrowthStage };
 
 export interface TileData {
   x: number;
@@ -33,156 +45,13 @@ export interface TileData {
   careCheckAt?: number | null; // 播種後 10 秒才開始檢查照顧條件
 }
 
-export interface CropData {
-  id: number;
-  nameZhTw: string;
-  growTimeSec: number;
-  sellPrice: number;
-  buyPrice: number;
-  exp: number;
-  sprite: string;
-}
+const DEBUG = false;
+const DEBUG_FARM = false;
+const DEBUG_COOP = false;
 
-export const TILE_SIZE = 32;
-export const GRID_WIDTH = 16;
-export const GRID_HEIGHT = 16;
 
-export const TILE_TYPES = {
-  GRASS: 'grass',
-  SOIL: 'soil',
-  PATH: 'path',
-  TREE: 'tree'
-} as const;
-
-// 生長階段
-export type GrowthStage = 'seed' | 'seedling' | 'growing' | 'mature' | 'dry' | 'withered';
-
-// 作物代號映射(用於 sprite key)
-export const CROP_SPRITES: Record<string, Record<GrowthStage, string>> = {
-  wheat: {
-    seed: 'crop_wheat_seed',
-    seedling: 'crop_wheat_seedling',
-    growing: 'crop_wheat_growing',
-    mature: 'crop_wheat_mature',
-    dry: 'crop_wheat_dry',
-    withered: 'crop_wheat_withered',
-  },
-  corn: {
-    seed: 'crop_corn_seed',
-    seedling: 'crop_corn_seedling',
-    growing: 'crop_corn_growing',
-    mature: 'crop_corn_mature',
-    dry: 'crop_corn_dry',
-    withered: 'crop_corn_withered',
-  },
-  carrot: {
-    seed: 'crop_carrot_seed',
-    seedling: 'crop_carrot_seedling',
-    growing: 'crop_carrot_growing',
-    mature: 'crop_carrot_mature',
-    dry: 'crop_carrot_dry',
-    withered: 'crop_carrot_withered',
-  },
-  potato: {
-    seed: 'crop_potato_seed',
-    seedling: 'crop_potato_seedling',
-    growing: 'crop_potato_growing',
-    mature: 'crop_potato_mature',
-    dry: 'crop_potato_dry',
-    withered: 'crop_potato_withered',
-  },
-  sugarcane: {
-    seed: 'crop_sugarcane_seed',
-    seedling: 'crop_sugarcane_seedling',
-    growing: 'crop_sugarcane_growing',
-    mature: 'crop_sugarcane_mature',
-    dry: 'crop_sugarcane_dry',
-    withered: 'crop_sugarcane_withered',
-  },
-};
-
-// 作物土堆視覺錨點偏移(x: 右移, y: 下移 = 正值往下)
-// 土堆中心對齊農地中心:所有 offset 都是小調整
-// 統一使用 setOrigin(0.5, 1),所以 y 正值往下移(作物往上長需要負值)
-// 但現有 mature offset 為正,故保持現有方向,只修正 seed/seedling 的極端值
-export const CROP_STAGE_VISUAL_OFFSET: Record<string, Record<GrowthStage, { x: number; y: number }>> = {
-  wheat: {
-    seed: { x: 0, y: 5 },
-    seedling: { x: 0, y: 5 },
-    growing: { x: 0, y: 10 },
-    mature: { x: 0, y: 20 },
-    dry: { x: 0, y: 10 },
-    withered: { x: 0, y: 5 },
-  },
-  corn: {
-    seed: { x: 0, y: 5 },
-    seedling: { x: 0, y: 5 },
-    growing: { x: 0, y: 10 },
-    mature: { x: 0, y: 19 },
-    dry: { x: 0, y: 10 },
-    withered: { x: 0, y: 5 },
-  },
-  carrot: {
-    seed: { x: 0, y: 5 },
-    seedling: { x: 0, y: 5 },
-    growing: { x: 0, y: 12 },
-    mature: { x: 0, y: 25 },
-    dry: { x: 0, y: 12 },
-    withered: { x: 0, y: 5 },
-  },
-  potato: {
-    seed: { x: 0, y: 5 },
-    seedling: { x: 0, y: 5 },
-    growing: { x: 0, y: 10 },
-    mature: { x: 0, y: 20 },
-    dry: { x: 0, y: 10 },
-    withered: { x: 0, y: 5 },
-  },
-};
-
-// 作物 ID 映射到 sprite key
-export const CROP_ID_TO_KEY: Record<number, string> = {
-  1: 'wheat',      // 小麥
-  2: 'corn',       // 玉米
-  3: 'carrot',     // 紅蘿蔔
-  4: 'potato',     // 馬鈴薯
-  5: 'sugarcane',  // 甘蔗
-  6: 'strawberry', // 草莓
-  7: 'tomato',     // 番茄
-  8: 'pumpkin',    // 南瓜
-  9: 'soybean',    // 黃豆
-  10: 'grape',     // 葡萄
-  11: 'apple',     // 蘋果
-  12: 'cocoa',     // 可可豆
-  13: 'cotton',    // 棉花
-  14: 'coffee',    // 咖啡豆
-  15: 'tea',       // 茶葉
-};
-
-export const CROP_KEY_TO_ID: Record<string, number> = {
-  wheat: 1,
-  corn: 2,
-  carrot: 3,
-  potato: 4,
-  sugarcane: 5,
-  strawberry: 6,
-  tomato: 7,
-  pumpkin: 8,
-  soybean: 9,
-  grape: 10,
-  apple: 11,
-  cocoa: 12,
-  cotton: 13,
-  coffee: 14,
-  tea: 15,
-};
-
-// 作物詳細資料(客戶端快取)
-let cropDetailsCache: CropData[] = [];
-
-export function getCropDetails(cropId: number): CropData | undefined {
-  return cropDetailsCache.find(c => c.id === cropId);
-}
+// 開發模式：跳過產蛋倒計時（測試完改 false）
+const DEBUG_SKIP_EGG_TIMER = false;
 
 function formatTime(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
@@ -598,7 +467,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }
       const data = await res.json();
       if (data.success && data.crops) {
-        cropDetailsCache = data.crops;
+        setupCropCache(data.crops);
               }
     } catch (err) {
       console.warn('[FarmScene] 載入作物資料失敗', err);
@@ -923,7 +792,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     seeds.forEach(s => { seedCountMap[s.itemId] = s.amount; });
 
     // ── 只顯示前4種作物:小麥、玉米、紅蘿蔔、馬鈴薯 ──
-    const displayCrops = cropDetailsCache.slice(0, 4);
+    const displayCrops = getAllCropDetails().slice(0, 4);
     if (displayCrops.length === 0) return;
 
     // ── 小型浮動面板: 220x(依內容), 跟隨點擊農地 ──
@@ -936,7 +805,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const MAX_SHOW = 4;
     const seedsWithAmount = seeds.filter((s: any) => s.amount > 0);
     const displaySeeds = seedsWithAmount
-      .map((seed: any) => cropDetailsCache.find((c: any) => c.id === seed.itemId))
+      .map((seed: any) => getAllCropDetails().find((c: any) => c.id === seed.itemId))
       .filter((c: any) => c !== undefined);
     const visibleCount = Math.min(displaySeeds.length, MAX_SHOW);
     const POPUP_H = TITLE_H + CLOSE_H + PADDING + visibleCount * ROW_H + PADDING;
@@ -1066,7 +935,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.seedPopup.add(rowBg);
 
       // 種子圖示（維持大小 36x36）
-      const iconKey = crop.icon || cropDetailsCache.find((c: any) => c.id === crop.id)?.icon || '';
+      const iconKey = crop.icon || getAllCropDetails().find((c: any) => c.id === crop.id)?.icon || '';
       if (iconKey) {
         const icon = this.add.image(22, rowY + ROW_H / 2, iconKey);
         icon.setDisplaySize(36, 36);
