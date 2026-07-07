@@ -281,3 +281,19 @@ export function recalculateCropState(
     return 'growing';
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// TRANSITION DRY — M002.12
+// ══════════════════════════════════════════════════════════════
+
+// ── shouldTransitionToDry ────────────────────────────────────
+// 純規則：檢查作物是否可以進入 dry 狀態
+// 不碰 farmState / UI / API / Date
+// 呼叫端負責時機判斷（缺水/缺肥/10秒），這裡只做 state 等級 guard
+export function shouldTransitionToDry(state: TileData): boolean {
+  return !(
+    state.cropState === 'dry' ||
+    state.cropState === 'withered' ||
+    state.cropState === 'mature'
+  );
+}

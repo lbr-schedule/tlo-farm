@@ -33,6 +33,7 @@ import {
   getGrowthSpeedMultiplier,
   validateCanHarvest,
   recalculateCropState,
+  shouldTransitionToDry,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -1430,7 +1431,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const state = this.farmState.get(index);
     if (!state) return;
     // 只有 growing/seed/seedling 可以進入 dry
-    if (state.cropState === 'dry' || state.cropState === 'withered' || state.cropState === 'mature') return;
+    if (!shouldTransitionToDry(state)) return;
 
     const now = Date.now();
     this.farmState.set(index, {
