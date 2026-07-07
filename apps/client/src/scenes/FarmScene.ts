@@ -32,6 +32,7 @@ import {
   computeSoilState,
   getGrowthSpeedMultiplier,
   validateCanHarvest,
+  recalculateCropState,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -436,27 +437,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
   // 從伺服器同步農場狀態
   // ============================================================
-  // ── 用 finishAt + 生長速度重新計算 client-side state(不受後端 state 欺騙)──
-  // 未澆水時,生長速度 0.5x,effective finish 往後推
-  private recalcState(cropId: number | null, finishAt: number | null, wateredAt: number | undefined, serverState: string): 'empty' | 'growing' | 'mature' | 'seed' | 'seedling' {
-    if (!cropId || !finishAt) return 'empty';
-    const speed = getGrowthSpeedMultiplier(wateredAt);
-    const now = Date.now();
-    if (speed >= 1.0) {
-      if (now >= finishAt) return 'mature';
-      return 'growing';
-    } else {
-      // 未澆水:0.5x 速度 → effective finish = finishAt + (growTime * 0.5)
-      // 進度落後一半,所以完成時間要往後推
-      const cropInfo = getCropDetails(cropId);
-      const growTimeMs = (cropInfo?.growTimeSec || 60) * 1000;
-      const delayMs = growTimeMs; // 0.5x 速度要多等一倍時間 = 再加一個 growTime
-      const effectiveFinishAt = finishAt + delayMs;
-      if (now >= effectiveFinishAt) return 'mature';
-      return 'growing';
-    }
-  }
-
+  // 同步農場狀態
+  // ============================================================
   private async syncFarmState() {
     try {
       const res = await authFetch('/api/farm/status');
@@ -475,7 +457,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
             const isDryOrWithered = (rawState === 'dry' || rawState === 'withered') && !clientIsRecovered;
             const computedState = isDryOrWithered
               ? rawState as any
-              : this.recalcState(tile.cropId, tile.finishAt, tile.wateredAt, tile.state);
+              : recalculateCropState(tile.cropId, tile.finishAt, tile.wateredAt, tile.state);
             const { isWatered, cropStatus } = calcWaterStatus(tile.wateredAt);
             const cropState = isDryOrWithered
               ? rawState as any
@@ -3556,7 +3538,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
       if (!state.finishAt) return;
 
-      const computedState = this.recalcState(state.cropId, state.finishAt, state.wateredAt, state.state);
+      const computedState = recalculateCropState(state.cropId, state.finishAt, state.wateredAt, state.state);
 
       // ── 播種後 10 秒:檢查是否需要進入 dry ──
       if (state.cropState !== 'dry' &&

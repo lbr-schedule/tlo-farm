@@ -253,3 +253,31 @@ export function validateCanHarvest(
   }
   return { valid: true };
 }
+
+// ══════════════════════════════════════════════════════════════
+// RECALC STATE — M002.11
+// ══════════════════════════════════════════════════════════════
+
+// ── recalculateCropState ─────────────────────────────────────
+// 純遊戲規則，不碰 farmState / UI / API / Backpack
+export function recalculateCropState(
+  cropId: number | null,
+  finishAt: number | null,
+  wateredAt: number | undefined,
+  serverState: string
+): 'empty' | 'growing' | 'mature' | 'seed' | 'seedling' {
+  if (!cropId || !finishAt) return 'empty';
+  const speed = getGrowthSpeedMultiplier(wateredAt);
+  const now = Date.now();
+  if (speed >= 1.0) {
+    if (now >= finishAt) return 'mature';
+    return 'growing';
+  } else {
+    const cropInfo = getCropDetails(cropId);
+    const growTimeMs = (cropInfo?.growTimeSec || 60) * 1000;
+    const delayMs = growTimeMs;
+    const effectiveFinishAt = finishAt + delayMs;
+    if (now >= effectiveFinishAt) return 'mature';
+    return 'growing';
+  }
+}
