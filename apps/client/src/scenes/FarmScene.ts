@@ -34,6 +34,7 @@ import {
   validateCanHarvest,
   recalculateCropState,
   shouldTransitionToDry,
+  shouldTransitionToWithered,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -1464,7 +1465,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   private transitionToWithered(index: number) {
     const state = this.farmState.get(index);
     if (!state) return;
-    if (state.cropState === 'withered') return;
+    if (!shouldTransitionToWithered(state)) return;
 
     this.farmState.set(index, {
       ...state,

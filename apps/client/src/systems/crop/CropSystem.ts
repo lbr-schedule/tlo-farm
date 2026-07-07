@@ -297,3 +297,15 @@ export function shouldTransitionToDry(state: TileData): boolean {
     state.cropState === 'mature'
   );
 }
+
+// ══════════════════════════════════════════════════════════════
+// TRANSITION WITHERED — M002.13
+// ══════════════════════════════════════════════════════════════
+
+// ── shouldTransitionToWithered ───────────────────────────────
+// 純規則：檢查作物是否可以進入枯萎狀態
+// 不碰 farmState / UI / API / Date
+// 呼叫端負責時間判斷（dryStartedAt >= 30000ms），這裡只做 state 等級 guard
+export function shouldTransitionToWithered(state: TileData): boolean {
+  return state.cropState !== 'withered';
+}
