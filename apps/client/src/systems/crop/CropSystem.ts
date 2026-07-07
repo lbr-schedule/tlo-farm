@@ -190,3 +190,36 @@ export function validateCanFertilize(
   }
   return { valid: true, originalState: state };
 }
+
+// ══════════════════════════════════════════════════════════════
+// HARVEST — M002.8
+// ══════════════════════════════════════════════════════════════
+
+export interface ValidateHarvestResult {
+  valid: true;
+}
+
+export interface ValidateHarvestFailure {
+  valid: false;
+  reason: 'crop_is_withered' | 'crop_not_mature' | 'no_crop_id';
+}
+
+export type HarvestValidation = ValidateHarvestResult | ValidateHarvestFailure;
+
+// ── validateCanHarvest ───────────────────────────────────────
+// 純規則驗證，不觸碰 farmState / UI / API / Backpack
+// 注意：dry 由呼叫端（FarmScene）先行處理，這裡不回傳 dry 相關 reason
+export function validateCanHarvest(
+  state: TileData
+): HarvestValidation {
+  if (state.cropState === 'withered') {
+    return { valid: false, reason: 'crop_is_withered' };
+  }
+  if (state.cropState !== 'mature') {
+    return { valid: false, reason: 'crop_not_mature' };
+  }
+  if (!state.cropId) {
+    return { valid: false, reason: 'no_crop_id' };
+  }
+  return { valid: true };
+}

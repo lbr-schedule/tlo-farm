@@ -28,6 +28,7 @@ import {
   applyOptimisticWater,
   rollbackWater,
   validateCanFertilize,
+  validateCanHarvest,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -1361,16 +1362,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       console.warn(`[FarmScene] blocked harvest: cropState=dry`);
       return;
     }
-    if (state.cropState === 'withered') {
-      console.warn(`[FarmScene] blocked harvest: cropState=withered`);
-      return;
-    }
-    if (state.cropState !== 'mature') {
-      console.warn(`[FarmScene] blocked harvest: cropState=${state.cropState}`);
-      return;
-    }
-    if (!state.cropId) {
-      console.warn(`[FarmScene] blocked harvest: no cropId`);
+    const validation = validateCanHarvest(state);
+    if (!validation.valid) {
       return;
     }
 
