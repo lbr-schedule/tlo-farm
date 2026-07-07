@@ -65,6 +65,7 @@ export default class FarmScene extends Phaser.Scene {
   private chickenCoopTileX = 0;
   private chickenCoopTileY = 0;
   private chickenCoopSprite: Phaser.GameObjects.Sprite | null = null;
+  private chickenCoopHitZone: Phaser.GameObjects.Zone | null = null;
 
   // ── 雞舍放置模式 ──
   // ── 農地位置(instance variable 供 placement system 使用)──
@@ -247,17 +248,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   create() {
     if (DEBUG_COOP) console.log('[FARMSCENE CREATE]');
-    const saved = localStorage.getItem('tlo_farm_chicken_coop');
-    if (DEBUG_COOP) console.log('[LOAD LOCALSTORAGE]', saved);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (DEBUG_COOP) console.log('[RESTORE CHICKEN COOP]', saved);
-      // restore 時 save:false 避免覆蓋 localStorage,animals 從 parsed 讀取
-      this.placeChickenCoopLocal(parsed.x, parsed.y, {
-        save: false,
-        animals: parsed.animals ?? []
-      });
-    }
+    // 雞舍位置統一由 API 驅動，不再從 localStorage 建立 sprite
+    // localStorage 只作被動快取，sprite 由 renderChickenCoop() 統一管理
     const parent = this.sys.game.canvas.parentElement;
     if (parent) {
       this.CANVAS_W = parent.clientWidth;
@@ -2062,12 +2054,13 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           this.chickenCoopPlaced = true;
           this.chickenCoopTileX = data.tileX;
           this.chickenCoopTileY = data.tileY;
-          // 只有在 sprite 還沒建立過時才建立（避免破壞 restore 出來的雞舍位置）
-          if (!this.chickenCoopSprite) {
-            this.renderChickenCoop();
-          } else {
-            console.log('[SYNC] chickenCoopSprite already exists, skip renderChickenCoop — preserving current sprite position/size');
+          // 無條件以 API tileX/tileY 為準：摧毀舊 sprite，依 API 資料重建
+          if (this.chickenCoopSprite) {
+            console.log('[SYNC] destroying existing chickenCoopSprite to re-render at API position');
+            this.chickenCoopSprite.destroy();
+            this.chickenCoopSprite = null;
           }
+          this.renderChickenCoop();
           // API 回傳後立即用 server slots 渲染小雞（與商店狀態同步）
           console.log('[SYNC hasBuilding=true] calling renderChicksInCoop');
           this.renderChicksInCoop();
@@ -2114,6 +2107,11 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 雞舍:渲染已放置的雞舍(2×2)
   // ============================================================
   private renderChickenCoop() {
+    // 摧毀舊 hitZone
+    if (this.chickenCoopHitZone) {
+      this.chickenCoopHitZone.destroy();
+      this.chickenCoopHitZone = null;
+    }
     if (this.chickenCoopSprite) {
       this.chickenCoopSprite.destroy();
       this.chickenCoopSprite = null;
@@ -2128,27 +2126,31 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmStartX = (this.CANVAS_W - totalFarmW) / 2;
     const farmStartY = (this.CANVAS_H - totalFarmH) / 2;
 
-    // 雞舍位於農地右側 (x=3, y=0),2×2 農地大小
-    // 雞舍座標 stored as farmland-relative farmland tile (FARM_SIZE=120px per tile)
-    // this.chickenCoopTileX/Y = farmland-relative farmland tile (0-15)
-    const coopPixelX = farmStartX + this.chickenCoopTileX * this.FARM_SIZE + this.FARM_SIZE;
-    const coopPixelY = farmStartY + this.chickenCoopTileY * this.FARM_SIZE + this.FARM_SIZE;
+    // 雞舍位於農地右側 (x=3, y=0),使用左上角定位（origin=0,0）
+    const coopPixelX = farmStartX + this.chickenCoopTileX * this.FARM_SIZE;
+    const coopPixelY = farmStartY + this.chickenCoopTileY * this.FARM_SIZE;
 
     const coopSprite = this.add.sprite(coopPixelX, coopPixelY, 'chicken_coop');
-    // 2×2 農地大小 = 240×240
-    coopSprite.setDisplaySize(this.FARM_SIZE * 2, this.FARM_SIZE * 2);
-    coopSprite.setOrigin(0.5, 0.5);
-    coopSprite.setDepth(10);
-    coopSprite.setInteractive(
-      new Phaser.Geom.Rectangle(-this.FARM_SIZE, -this.FARM_SIZE, this.FARM_SIZE * 2, this.FARM_SIZE * 2),
-      Phaser.Geom.Rectangle.Contains
-    );
-    coopSprite.on('pointerdown', () => {
+    // 288×288，與原本 placeChickenCoopLocal() 一致
+    coopSprite.setDisplaySize(288, 288);
+    coopSprite.setOrigin(0, 0);
+    coopSprite.setDepth(5000);
+
+    this.chickenCoopSprite = coopSprite;
+
+    // 透明互動區，專門吃點擊
+    const hitZone = this.add.zone(coopPixelX, coopPixelY, 288, 288);
+    hitZone.setOrigin(0, 0);
+    hitZone.setDepth(6000);
+    hitZone.setInteractive({ useHandCursor: true });
+    hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      console.log('[COOP POINTERDOWN]');
+      pointer.event.stopPropagation();
       if (!this.farmInputEnabled) return;
       this.openChickenCoopPanel();
     });
 
-    this.chickenCoopSprite = coopSprite;
+    this.chickenCoopHitZone = hitZone;
   }
 
   // ============================================================
@@ -2579,64 +2581,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // options.save: 是否要寫入 localStorage(restore 時應傳 false,避免覆蓋 animals)
   // options.animals: 要保存的 animals 陣列(restore 時傳入,否則用空陣列)
   private placeChickenCoopLocal(x: number, y: number, options: { save?: boolean; animals?: unknown[] } = {}) {
-    if (DEBUG_COOP) console.log('[PLACE LOCAL COOP]', { x, y, hasSprite: !!this.chickenCoopSprite, options });
-    if (this.chickenCoopSprite) {
-      console.log('[SKIP CREATE] coop already exists');
-      return;
-    }
-    // 建立雞舍 sprite（不可拖曳，只有 setInteractive）
-    const coop = this.add.image(x, y, 'chicken_coop');
-    coop.setOrigin(0, 0);
-    coop.setDisplaySize(288, 288);
-    coop.setDepth(5000);
-    coop.removeAllListeners('pointerdown');
-    // 恢復：整張圖片可點擊，不要自訂 hitArea
-    coop.setInteractive({ useHandCursor: true });
-//     console.log('[COOP SPRITE READY]', {
-    console.log('[COOP SPRITE READY]', {
-      exists: !!coop,
-      interactive: !!coop.input,
-      depth: coop.depth,
-      visible: coop.visible,
-      active: coop.active,
-    });
-    // 點擊雞舍開管理介面（農地選單開啟時阻擋）
-    coop.on('pointerdown', (pointer, localX, localY, event) => {
-      console.log('[CHICKEN COOP CLICKED]', {
-        isFarmActionMenuOpen: this.isFarmActionMenuOpen,
-        pointerX: pointer.x, pointerY: pointer.y,
-        localX, localY,
-      });
-      if (this.isFarmActionMenuOpen) {
-        console.log('[COOP CLICK BLOCKED BY FARM MENU]');
-        return;
-      }
-      this.openChickenCoopPanel();
-    });
-    this.chickenCoopSprite = coop;
-//     console.log('[LOCAL PLACE SUCCESS]');
-    console.log('[LOCAL PLACE SUCCESS]');
-    // 追蹤是否被摧毀
-    if (DEBUG_COOP) {
-      this.chickenCoopSprite.on('destroy', () => {
-        console.warn('[CHICKEN COOP SPRITE DESTROYED]', { x, y, stack: new Error().stack });
-      });
-    }
-
-    // 小雞 sprites 由 syncChickenCoopStatus() 的 API 回傳後統一渲染
-    // 不要在這裡呼叫 renderChicksInCoop()（coopChickenStatus 此時尚未取回）
-
-    // 只有在需要保存時才寫入 localStorage(購買新雞舍時),restore 時不應覆蓋
+    // Sprite 建立已停用。雞舍 sprite 統一由 renderChickenCoop() 管理。
+    // 此函式只負責寫入 localStorage（購買流程需要）。
+    // API 同步後 renderChickenCoop() 會以 tileX/tileY 為準建立正確的 sprite。
+    if (DEBUG_COOP) console.log('[PLACE LOCAL COOP — sprite creation disabled]', { x, y, options });
     const shouldSave = options.save !== false;
     const animalsToSave = options.animals ?? [];
     if (shouldSave) {
       console.log('[SAVE CHICKEN COOP LOCAL]', { x, y, animalsCount: animalsToSave.length });
       localStorage.setItem('tlo_farm_chicken_coop', JSON.stringify({ type: 'chicken_coop', x, y, widthTiles: 2, heightTiles: 2, level: 1, capacity: 4, animals: animalsToSave }));
-      if (DEBUG_COOP) {
-        console.log('[VERIFY LOCALSTORAGE AFTER SAVE]', localStorage.getItem('tlo_farm_chicken_coop'));
-      }
-    } else {
-      if (DEBUG_COOP) console.log('[SKIP SAVE] restore mode, animals preserved');
     }
   }
 
@@ -2651,31 +2604,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   private loadChickenCoopLocalState() {
-    try {
-      const raw = localStorage.getItem('tlo_farm_chicken_coop');
-      if (!raw) {
-        console.log('[LOCAL STORAGE] no saved chicken coop data');
-        return;
-      }
-      const state = JSON.parse(raw);
-      if (DEBUG_COOP) console.log('[LOCAL STORAGE LOAD]', state);
-      // 防止重複建立
-      if (this.chickenCoopSprite) {
-        if (DEBUG_COOP) console.log('[SKIP LOCAL LOAD] chickenCoopSprite already exists');
-        return;
-      }
-      // 在 sprite 建立之前就設 flag(syncChickenCoopStatus 是 async,必須搶在它 destroy 之前)
-      // 只建立 sprite,不進入放置模式,不顯示 preview
-      // restore 時 save:false 避免覆蓋 localStorage 中的 animals
-      this.placeChickenCoopLocal(state.x, state.y, {
-        save: false,
-        animals: state.animals ?? []
-      });
-      // 立即從 API 取狀態，renderChicksInCoop 會在 API 回傳後被呼叫
-      this.syncChickenCoopStatus();
-    } catch(e) {
-      console.error('[LOCAL STORAGE LOAD ERROR]', e);
-    }
+    // 此函式已停用。雞舍 sprite 建立統一由 renderChickenCoop() 處理，
+    // 位置統一由 API tileX/tileY 驅動，localStorage 不再作為位置來源。
+    // 僅保留函式簽名以避免其他 call site 錯誤。
   }
 
   // ── 向後相容:delegate 給 placeChickenCoopLocal ──
