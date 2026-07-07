@@ -30,6 +30,7 @@ import {
   validateCanFertilize,
   calcWaterStatus,
   computeSoilState,
+  getGrowthSpeedMultiplier,
   validateCanHarvest,
 } from '../systems/crop/CropSystem';
 
@@ -109,17 +110,6 @@ export default class FarmScene extends Phaser.Scene {
   // ── 計算生長速度倍率(根據澆水狀態)──
   // 已澆水:1x,未澆水:0.5x (MVP 規則)
   // 委託 CropSystem.calcWaterStatus，避免遊戲規則重複
-  private getGrowthSpeedMultiplier(wateredAt: number | undefined): number {
-    return calcWaterStatus(wateredAt).isWatered ? 1.0 : 0.5;
-  }
-
-
-  // ── 計算土地視覺狀態 ──
-  // 委託 CropSystem.calcWaterStatus
-  private computeSoilState(wateredAt: number | undefined): TileData['soilState'] {
-    return calcWaterStatus(wateredAt).isWatered ? 'watered' : 'dry';
-  }
-
   private selectedSeed: number | null = null;
   private farmState: Map<number, TileData> = new Map();
   private farmInputEnabled = true;
@@ -450,7 +440,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 未澆水時,生長速度 0.5x,effective finish 往後推
   private recalcState(cropId: number | null, finishAt: number | null, wateredAt: number | undefined, serverState: string): 'empty' | 'growing' | 'mature' | 'seed' | 'seedling' {
     if (!cropId || !finishAt) return 'empty';
-    const speed = this.getGrowthSpeedMultiplier(wateredAt);
+    const speed = getGrowthSpeedMultiplier(wateredAt);
     const now = Date.now();
     if (speed >= 1.0) {
       if (now >= finishAt) return 'mature';
