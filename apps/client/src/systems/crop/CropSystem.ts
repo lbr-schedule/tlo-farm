@@ -153,3 +153,40 @@ export function rollbackWater(
 ): void {
   farmState.set(index, originalState);
 }
+
+// ══════════════════════════════════════════════════════════════
+// FERTILIZE — M002.7
+// ══════════════════════════════════════════════════════════════
+
+const VALID_FERTILIZE_STATES = ['growing', 'seedling', 'seed', 'dry'];
+
+export interface ValidateFertilizeResult {
+  valid: true;
+  originalState: TileData;
+}
+
+export interface ValidateFertilizeFailure {
+  valid: false;
+  reason: string;
+}
+
+export type FertilizeValidation = ValidateFertilizeResult | ValidateFertilizeFailure;
+
+// ── validateCanFertilize ─────────────────────────────────────
+
+export function validateCanFertilize(
+  farmState: Map<number, TileData>,
+  index: number
+): FertilizeValidation {
+  const state = farmState.get(index);
+  if (!state) {
+    return { valid: false, reason: 'tile_not_found' };
+  }
+  if (!VALID_FERTILIZE_STATES.includes(state.cropState)) {
+    return { valid: false, reason: 'invalid_crop_state' };
+  }
+  if (state.isFertilized) {
+    return { valid: false, reason: 'already_fertilized' };
+  }
+  return { valid: true, originalState: state };
+}

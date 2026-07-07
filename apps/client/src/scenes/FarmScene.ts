@@ -27,6 +27,7 @@ import {
   createOptimisticWaterState,
   applyOptimisticWater,
   rollbackWater,
+  validateCanFertilize,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -1753,19 +1754,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 施肥
   // ============================================================
   private async fertilizeCrop(index: number) {
-    const state = this.farmState.get(index);
-    if (!state) return;
-
-    if (state.cropState !== 'growing' && state.cropState !== 'seedling' && state.cropState !== 'seed' && state.cropState !== 'dry') {
-      console.warn('[FarmScene] 施肥失敗:狀態不正確', state.cropState);
-      return;
-    }
-
-    if (state.isFertilized) {
-      console.warn('[FarmScene] 施肥失敗:已施肥');
-      return;
-    }
-
+    // ── 驗證（CropSystem）──
+    const validation = validateCanFertilize(this.farmState, index);
+    if (!validation.valid) return;
+    const state = validation.originalState;
 
     const container = this.tiles.get(`${index}`);
     if (!container) return;
