@@ -36,6 +36,7 @@ import {
   shouldTransitionToDry,
   shouldTransitionToWithered,
 } from '../systems/crop/CropSystem';
+import { INITIAL_FARM_COLS, INITIAL_FARM_ROWS, INITIAL_FARM_PLOT_COUNT } from '../systems/farm/FarmConfig';
 
 // Re-export so existing importers still work
 // TODO: migrate importers to import from CropConfig directly
@@ -259,8 +260,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // 背景透明,讓 React 層的草地背景顯示
     // 草地背景由 React 層提供,Phaser 層保持透明
 
-    const COLS = 3;
-    const ROWS = 2;
+    const COLS = INITIAL_FARM_COLS;
+    const ROWS = INITIAL_FARM_ROWS;
     const FARM_BASE_SIZE = 120;
     const FARM_SCALE = 0.75;
     const FARM_TILE_SIZE = FARM_BASE_SIZE * FARM_SCALE; // 90，每塊農地視覺尺寸
@@ -276,7 +277,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmStartY = this.farmStartY;
 
     //全部初始化為空(無硬編碼假資料)
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < INITIAL_FARM_PLOT_COUNT; i++) {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const px = farmStartX + col * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
@@ -393,8 +394,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // 重新排農地(resize 時呼叫)
   private layoutFarmlands() {
-    const COLS = 3;
-    const ROWS = 2;
+    const COLS = INITIAL_FARM_COLS;
+    const ROWS = INITIAL_FARM_ROWS;
 
     const totalFarmW = COLS * this.FARM_SIZE + (COLS - 1) * this.FARM_GAP;
     const totalFarmH = ROWS * this.FARM_SIZE + (ROWS - 1) * this.FARM_GAP;
@@ -402,7 +403,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const farmStartY = (this.CANVAS_H - totalFarmH) / 2;
 
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < INITIAL_FARM_PLOT_COUNT; i++) {
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const px = farmStartX + col * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
@@ -2067,8 +2068,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (!this.chickenCoopPlaced) return;
 
     // 農地處於畫布中央,3×2 農地 (360×240) + 間隔
-    const COLS = 3;
-    const ROWS = 2;
+    const COLS = INITIAL_FARM_COLS;
+    const ROWS = INITIAL_FARM_ROWS;
     const totalFarmW = COLS * this.FARM_SIZE + (COLS - 1) * this.FARM_GAP;
     const totalFarmH = ROWS * this.FARM_SIZE + (ROWS - 1) * this.FARM_GAP;
     const farmStartX = (this.CANVAS_W - totalFarmW) / 2;
