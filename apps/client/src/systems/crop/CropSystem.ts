@@ -86,3 +86,70 @@ export function rollbackPlant(
 ): void {
   farmState.set(index, originalState);
 }
+
+// ══════════════════════════════════════════════════════════════
+// WATER — M002.6
+// ══════════════════════════════════════════════════════════════
+
+const VALID_WATER_STATES = ['growing', 'seedling', 'seed', 'dry'];
+
+export interface ValidateWaterResult {
+  valid: true;
+  originalState: TileData;
+}
+
+export interface ValidateWaterFailure {
+  valid: false;
+  reason: string;
+}
+
+export type WaterValidation = ValidateWaterResult | ValidateWaterFailure;
+
+// ── validateCanWater ─────────────────────────────────────────
+
+export function validateCanWater(
+  farmState: Map<number, TileData>,
+  index: number
+): WaterValidation {
+  const state = farmState.get(index);
+  if (!state) {
+    return { valid: false, reason: 'tile_not_found' };
+  }
+  if (!VALID_WATER_STATES.includes(state.cropState)) {
+    return { valid: false, reason: 'invalid_crop_state' };
+  }
+  return { valid: true, originalState: state };
+}
+
+// ── createOptimisticWaterState ───────────────────────────────
+
+export function createOptimisticWaterState(): Partial<TileData> {
+  return {
+    wateredAt: Date.now(),
+    isWatered: true,
+    cropStatus: 'healthy',
+    soilState: 'watered',
+  };
+}
+
+// ── applyOptimisticWater ────────────────────────────────────
+
+export function applyOptimisticWater(
+  farmState: Map<number, TileData>,
+  index: number,
+  optimisticState: Partial<TileData>
+): void {
+  const existing = farmState.get(index);
+  if (!existing) return;
+  farmState.set(index, { ...existing, ...optimisticState });
+}
+
+// ── rollbackWater ───────────────────────────────────────────
+
+export function rollbackWater(
+  farmState: Map<number, TileData>,
+  index: number,
+  originalState: TileData
+): void {
+  farmState.set(index, originalState);
+}

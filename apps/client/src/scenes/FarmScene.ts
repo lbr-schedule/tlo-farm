@@ -23,6 +23,10 @@ import {
   createOptimisticPlantState,
   applyOptimisticPlant,
   rollbackPlant,
+  validateCanWater,
+  createOptimisticWaterState,
+  applyOptimisticWater,
+  rollbackWater,
 } from '../systems/crop/CropSystem';
 
 // Re-export so existing importers still work
@@ -1649,14 +1653,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 澆水
   // ============================================================
   private async waterCrop(index: number) {
-    const state = this.farmState.get(index);
-    if (!state) return;
-    if (state.cropState !== 'growing' && state.cropState !== 'seedling' && state.cropState !== 'seed' && state.cropState !== 'dry') {
-      console.warn('[FarmScene] 澆水失敗:狀態不正確', state.state);
-      return;
-    }
-
-
+    // ── 驗證（CropSystem）──
+    const validation = validateCanWater(this.farmState, index);
+    if (!validation.valid) return;
+    const originalState = validation.originalState;
 
     const container = this.tiles.get(`${index}`);
     if (!container) return;
@@ -1694,16 +1694,9 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       onComplete: () => wateredText.destroy(),
     });
 
-    // ── 更新澆水狀態(客戶端樂觀更新)──
-    const wateredAt = Date.now();
-    // MVP:dry 恢復由後端判斷,前端只更新澆水狀態
-    this.farmState.set(index, {
-      ...state,
-      wateredAt,
-      isWatered: true,
-      cropStatus: 'healthy',
-      soilState: 'watered',
-    });
+    // ── 樂觀更新（CropSystem）──
+    const optimisticState = createOptimisticWaterState();
+    applyOptimisticWater(this.farmState, index, optimisticState);
 
     // ── 立刻更新土地貼圖 + 重建作物 ──
     this.renderFarmland(index);
@@ -1718,8 +1711,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const data = await res.json();
       if (!data.success) {
         console.warn('[FarmScene] 澆水 API 失敗:', data.message);
-        // 回滾澆水狀態
-        this.farmState.set(index, { ...state });
+        // 回滾（CropSystem）
+        rollbackWater(this.farmState, index, originalState);
         this.renderFarmland(index);
         this.renderCrop(index);
       } else {
@@ -1749,8 +1742,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       }
     } catch (err) {
       console.warn('[FarmScene] 澆水 API 錯誤', err);
-      // 回滾
-      this.farmState.set(index, { ...state });
+      // 回滾（CropSystem）
+      rollbackWater(this.farmState, index, originalState);
       this.renderFarmland(index);
       this.renderCrop(index);
     }
