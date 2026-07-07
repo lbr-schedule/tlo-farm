@@ -788,19 +788,6 @@ router.post('/fertilize', async (req: AuthRequest, res: Response) => {
     );
     const foundAmount = invRows.rows?.[0]?.amount ?? 0;
 
-    // 查所有 item type 庫存協助 debug
-    const allInvRows = await db.execute(
-      `SELECT item_type, item_id, amount FROM inventories WHERE user_id = ? AND item_type = 'item'`,
-      [userId]
-    );
-    console.warn('[FERTILIZE INVENTORY DEBUG]', {
-      userId,
-      searchedItemType: 'item',
-      searchedItemId: 1,
-      foundAmount,
-      allItemRows: allInvRows.rows,
-    });
-
     if (foundAmount < 1) {
       return res.status(400).json({ success: false, message: '肥料不足' });
     }
