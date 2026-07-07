@@ -91,6 +91,36 @@ export function rollbackPlant(
 // WATER — M002.6
 // ══════════════════════════════════════════════════════════════
 
+const WATER_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+// ── calcWaterStatus ─────────────────────────────────────────
+// 純計算，不依賴 this，不讀寫 farmState
+export function calcWaterStatus(
+  wateredAt: number | undefined
+): { isWatered: boolean; cropStatus: 'healthy' | 'needs_water' } {
+  if (!wateredAt) return { isWatered: false, cropStatus: 'needs_water' };
+  const elapsed = Date.now() - wateredAt;
+  if (elapsed <= WATER_INTERVAL_MS) return { isWatered: true, cropStatus: 'healthy' };
+  return { isWatered: false, cropStatus: 'needs_water' };
+}
+
+// ── getGrowthSpeedMultiplier ─────────────────────────────────
+// 已澆水:1x, 未澆水:0.5x (MVP 規則)
+export function getGrowthSpeedMultiplier(wateredAt: number | undefined): number {
+  return calcWaterStatus(wateredAt).isWatered ? 1.0 : 0.5;
+}
+
+// ── computeSoilState ─────────────────────────────────────────
+export function computeSoilState(
+  wateredAt: number | undefined
+): TileData['soilState'] {
+  return calcWaterStatus(wateredAt).isWatered ? 'watered' : 'dry';
+}
+
+// ══════════════════════════════════════════════════════════════
+// WATER — M002.6
+// ══════════════════════════════════════════════════════════════
+
 const VALID_WATER_STATES = ['growing', 'seedling', 'seed', 'dry'];
 
 export interface ValidateWaterResult {

@@ -28,6 +28,8 @@ import {
   applyOptimisticWater,
   rollbackWater,
   validateCanFertilize,
+  calcWaterStatus,
+  computeSoilState,
   validateCanHarvest,
 } from '../systems/crop/CropSystem';
 
@@ -104,24 +106,18 @@ export default class FarmScene extends Phaser.Scene {
   // ── 澆水有效期:30 分鐘 ──
   private WATER_INTERVAL_MS = 30 * 60 * 1000;
 
-  // ── 根據 wateredAt 計算澆水狀態 ──
-  private calcWaterStatus(wateredAt: number | undefined): { isWatered: boolean; cropStatus: 'healthy' | 'needs_water' } {
-    if (!wateredAt) return { isWatered: false, cropStatus: 'needs_water' };
-    const elapsed = Date.now() - wateredAt;
-    if (elapsed <= this.WATER_INTERVAL_MS) return { isWatered: true, cropStatus: 'healthy' };
-    return { isWatered: false, cropStatus: 'needs_water' };
-  }
-
   // ── 計算生長速度倍率(根據澆水狀態)──
-  // 已澆水:1x,未澆水:0.5x(MVP 規則)
+  // 已澆水:1x,未澆水:0.5x (MVP 規則)
+  // 委託 CropSystem.calcWaterStatus，避免遊戲規則重複
   private getGrowthSpeedMultiplier(wateredAt: number | undefined): number {
-    return this.calcWaterStatus(wateredAt).isWatered ? 1.0 : 0.5;
+    return calcWaterStatus(wateredAt).isWatered ? 1.0 : 0.5;
   }
 
 
   // ── 計算土地視覺狀態 ──
+  // 委託 CropSystem.calcWaterStatus
   private computeSoilState(wateredAt: number | undefined): TileData['soilState'] {
-    return this.calcWaterStatus(wateredAt).isWatered ? 'watered' : 'dry';
+    return calcWaterStatus(wateredAt).isWatered ? 'watered' : 'dry';
   }
 
   private selectedSeed: number | null = null;
@@ -490,12 +486,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
             const computedState = isDryOrWithered
               ? rawState as any
               : this.recalcState(tile.cropId, tile.finishAt, tile.wateredAt, tile.state);
-            const { isWatered, cropStatus } = this.calcWaterStatus(tile.wateredAt);
+            const { isWatered, cropStatus } = calcWaterStatus(tile.wateredAt);
             const cropState = isDryOrWithered
               ? rawState as any
               : (clientIsRecovered ? 'growing' : computeCropState(tile.cropId, tile.finishAt, tile.state));
             // 空農地一定顯示乾農地,不受 wateredAt 殘留值影響
-            const soilState = (!tile.cropId || tile.state === 'empty') ? 'dry' : this.computeSoilState(tile.wateredAt);
+            const soilState = (!tile.cropId || tile.state === 'empty') ? 'dry' : computeSoilState(tile.wateredAt);
             // 對於已種植的作物,設定照顧檢查時間(播種後 10 秒)
             // 如果沒有 dryStartedAt(代表還沒進入乾燥),給予 10 秒寬限期
             let careCheckAt = (tile as any).careCheckAt ?? null;
