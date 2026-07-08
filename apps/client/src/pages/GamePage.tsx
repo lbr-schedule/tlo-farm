@@ -763,6 +763,14 @@ export default function GamePage() {
         [DEV] 升級彈窗
       </button>
 
+      {/* [DEV] 放置農地（M003.2.3） */}
+      <button
+        onClick={() => window.dispatchEvent(new Event('startFarmlandPlacement'))}
+        style={{ position: 'fixed', bottom: 80, right: 160, zIndex: 9999, background: '#0088ff', color: '#fff', border: '2px solid #fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }}
+      >
+        [DEV] 放置農地
+      </button>
+
       {/* 彈窗：升級提示 */}
       {pendingLevelUp !== null && (
         <LevelUpModal newLevel={pendingLevelUp} onClose={() => {

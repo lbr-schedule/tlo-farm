@@ -89,6 +89,15 @@ export default class FarmScene extends Phaser.Scene {
   private coopPlacementMode = false;
   private coopPlacementPreview: Phaser.GameObjects.Graphics | null = null;
   private placementStartedAt = 0; // 防止 UI 點擊冒泡的 100ms 延遲
+
+  // ── M003.2.3 農地放置模式 ──
+  private farmlandPlacementMode = false;
+  private farmlandPlacementSlotIndex: number | null = null;
+  private farmlandPlacementPreview: Phaser.GameObjects.Graphics | null = null;
+  private farmlandPlacementCursorTileX = 0;
+  private farmlandPlacementCursorTileY = 0;
+  private farmlandPlacementStartedAt = 0;
+  private farmlandPlacementCanPlace = false;
   private coopPlacementValid = false;
   private coopPlacementTileX = 0;
   private coopPlacementTileY = 0;
@@ -116,6 +125,9 @@ export default class FarmScene extends Phaser.Scene {
   // 委託 CropSystem.calcWaterStatus，避免遊戲規則重複
   private selectedSeed: number | null = null;
   private farmState: Map<number, TileData> = new Map();
+  // ── tile 座標映射（中間方案）──
+  private coordinateToIndex: Map<string, number> = new Map();
+  private indexToCoordinate: Map<number, { x: number; y: number }> = new Map();
   private farmInputEnabled = true;
   private progressBars: Map<number, Phaser.GameObjects.Container> = new Map();
   private matureIndicators: Map<number, Phaser.GameObjects.Container> = new Map();
@@ -315,6 +327,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
       this.tiles.set(`${i}`, farmContainer);
       this.farmlandObjects.push(farmContainer);
+      this.registerTileCoordinate(i, col, row);
     }
 
     this.loadCropDetails();
@@ -333,12 +346,16 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         this.startCoopPlacementMode();
       };
       window.addEventListener('startCoopPlacement', this._startCoopPlacement);
+      window.addEventListener('startFarmlandPlacement', () => this.enterFarmlandPlacement());
     }
 
     this.input.keyboard?.on('keydown-ESC', () => {
       this.clearAllPopups();
       if (this.coopPlacementMode) {
         this.cancelCoopPlacement('esc_cancel');
+      }
+      if (this.farmlandPlacementMode) {
+        this.cancelFarmlandPlacement();
       }
     });
 
@@ -390,6 +407,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       console.log('[EVENT] inventory-updated received, refetching backpack');
       backpackSystem.fetchAll();
     });
+
   }
 
   // 重新排農地(resize 時呼叫)
@@ -438,6 +456,52 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   }
 
   // ============================================================
+  // tile 座標 helper（中間方案）
+  // ============================================================
+  private getTileKey(x: number, y: number): string {
+    return `${x},${y}`;
+  }
+
+  private getTileCoordinate(index: number): { x: number; y: number } | null {
+    return this.indexToCoordinate.get(index) ?? null;
+  }
+
+  private registerTileCoordinate(index: number, x: number, y: number): void {
+    const key = this.getTileKey(x, y);
+    this.coordinateToIndex.set(key, index);
+    this.indexToCoordinate.set(index, { x, y });
+  }
+
+  private ensureFarmlandObject(index: number, x: number, y: number): void {
+    if (this.farmlandObjects[index]) return;
+    const px = this.farmStartX + x * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
+    const py = this.farmStartY + y * (this.FARM_SIZE + this.FARM_GAP) + this.FARM_SIZE / 2;
+    const container = this.add.container(px, py);
+    container.setSize(this.FARM_SIZE, this.FARM_SIZE);
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, this.FARM_SIZE, this.FARM_SIZE),
+      Phaser.Geom.Rectangle.Contains
+    );
+    container.setData('index', index);
+    const soilImg = this.add.image(0, 0, 'tile_soil');
+    soilImg.setDisplaySize(this.FARM_SIZE, this.FARM_SIZE);
+    soilImg.setOrigin(0.5, 0.5);
+    container.add(soilImg);
+    container.on('pointerdown', () => this.onFarmClick(index, px, py));
+    this.farmlandObjects[index] = container;
+    this.tiles.set(String(index), container);
+    if (!this.farmState.has(index)) {
+      this.farmState.set(index, {
+        x, y,
+        type: 'soil', state: 'empty', cropState: 'empty', soilState: 'dry',
+        cropId: undefined, plantedAt: undefined, finishAt: undefined,
+        wateredAt: undefined, isWatered: false, cropStatus: 'needs_water',
+      });
+    }
+    this.registerTileCoordinate(index, x, y);
+  }
+
+  // ============================================================
   // 從伺服器同步農場狀態
   // ============================================================
   // 同步農場狀態
@@ -449,7 +513,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
       if (data.success && data.tiles) {
         for (const tile of data.tiles) {
-          const index = tile.y * 3 + tile.x;
+          const tileKey = this.getTileKey(tile.x, tile.y);
+          let index: number;
+          if (this.coordinateToIndex.has(tileKey)) {
+            index = this.coordinateToIndex.get(tileKey)!;
+          } else {
+            index = this.farmlandObjects.length;
+            this.registerTileCoordinate(index, tile.x, tile.y);
+            this.ensureFarmlandObject(index, tile.x, tile.y);
+          }
           if (this.farmState.has(index)) {
             const existing = this.farmState.get(index)!;
             // ── 保留後端的 dry/withered 狀態,其他由 recalcState 計算 ──
@@ -690,6 +762,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.confirmCoopPlacement(this.coopPlacementTileX, this.coopPlacementTileY);
       return;
     }
+
 
     const state = this.farmState.get(index);
     if (!state) return;
@@ -984,7 +1057,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const res = await authFetch('/api/farm/plant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: index % 3, y: Math.floor(index / 3), cropId }),
+        body: JSON.stringify({ x: this.getTileCoordinate(index)!.x, y: this.getTileCoordinate(index)!.y, cropId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1341,8 +1414,8 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         if (DEBUG) { console.log('[HARVEST FRONTEND REQUEST]', {
       index,
       tileId: state.id,
-      x: index % 3,
-      y: Math.floor(index / 3),
+      x: this.getTileCoordinate(index)?.x ?? 0,
+      y: this.getTileCoordinate(index)?.y ?? 0,
       cropId: state.cropId,
       state: state.state,
       cropState: state.cropState,
@@ -1389,7 +1462,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const res = await authFetch('/api/farm/harvest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: index % 3, y: Math.floor(index / 3) }),
+        body: JSON.stringify({ x: this.getTileCoordinate(index)!.x, y: this.getTileCoordinate(index)!.y }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1548,12 +1621,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
   private async syncTileStateToBackend(index: number, updates: Record<string, any>) {
     try {
-      const x = index % 3;
-      const y = Math.floor(index / 3);
+      const coord = this.getTileCoordinate(index);
+      if (!coord) return;
       await authFetch('/api/farm/tile/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, ...updates }),
+        body: JSON.stringify({ x: coord.x, y: coord.y, ...updates }),
       });
     } catch (err) {
       console.warn('[FarmScene] syncTileStateToBackend 失敗:', err);
@@ -1601,7 +1674,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const res = await authFetch('/api/farm/clear-withered', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: index % 3, y: Math.floor(index / 3) }),
+        body: JSON.stringify({ x: this.getTileCoordinate(index)!.x, y: this.getTileCoordinate(index)!.y }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -1671,7 +1744,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const res = await authFetch('/api/farm/water', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: index % 3, y: Math.floor(index / 3) }),
+        body: JSON.stringify({ x: this.getTileCoordinate(index)!.x, y: this.getTileCoordinate(index)!.y }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -1741,7 +1814,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       const res = await authFetch('/api/farm/fertilize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: index % 3, y: Math.floor(index / 3) }),
+        body: JSON.stringify({ x: this.getTileCoordinate(index)!.x, y: this.getTileCoordinate(index)!.y }),
       });
       const data = await res.json();
 
@@ -2113,6 +2186,206 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // ============================================================
 
   // ── 進入放置模式 ──
+  // ── M003.2.3 農地放置模式 ──
+
+  // 進入農地放置模式（取第一個未放置 slot）
+  private async enterFarmlandPlacement() {
+    if (this.farmlandPlacementMode) return;
+
+    try {
+      const res = await authFetch('/api/farm/plots');
+      const data = await res.json();
+      if (!data.success || !data.plots) {
+        this.events.emit('game-toast', '讀取農地狀態失敗');
+        return;
+      }
+      // 找第一個未放置的 slot
+      const unplaced = (data.plots as any[]).filter((p: any) => !p.placed);
+      if (unplaced.length === 0) {
+        this.events.emit('game-toast', '沒有可放置的農地');
+        return;
+      }
+      const slotIndex = unplaced[0].slotIndex;
+      this.farmlandPlacementSlotIndex = slotIndex;
+      this.farmlandPlacementMode = true;
+      this.farmInputEnabled = true;
+      this.clearAllPopups();
+
+      // 建立預覽 Graphics
+      if (this.farmlandPlacementPreview) {
+        this.farmlandPlacementPreview.destroy();
+      }
+      this.farmlandPlacementPreview = this.add.graphics();
+      this.farmlandPlacementPreview.setDepth(999999);
+
+      this.farmlandPlacementStartedAt = Date.now();
+
+      // 預設放到第一個合法位置
+      const firstValid = this.findFirstValidFarmlandPosition(1, 1);
+      if (firstValid) {
+        const TILE_STEP = this.FARM_SIZE + this.FARM_GAP;
+        this.farmlandPlacementCursorTileX = Math.floor(firstValid.x / TILE_STEP);
+        this.farmlandPlacementCursorTileY = Math.floor(firstValid.y / TILE_STEP);
+        this.farmlandPlacementCanPlace = this.canPlaceFarmland(this.farmlandPlacementCursorTileX, this.farmlandPlacementCursorTileY).canPlace;
+        this.updateFarmlandPlacementPreview();
+      }
+
+      // M003.2.3 農地放置：使用 Scene Input Plugin 全域監聽（官方 Placement Mode 標準做法）
+      this.input.on('pointermove', this._farmlandPlacementPointerMoveHandler);
+      this.input.on('pointerdown', this._farmlandPlacementPointerDownHandler);
+      this.events.emit('game-toast', '請選擇要放置農地的位置');
+    } catch (err) {
+
+      this.events.emit('game-toast', '進入放置模式失敗');
+    }
+  }
+
+  // M003.2.3 農地放置：使用 Scene Input Plugin 全域監聽（符合 Phaser 官方 Placement Mode 標準做法）
+  private _farmlandPlacementPointerDownHandler: (pointer: Phaser.Input.Pointer) => void = (pointer) => {
+    if (!this.farmlandPlacementMode) return;
+    if (Date.now() - this.farmlandPlacementStartedAt < 300) return;
+    const TILE_STEP = this.FARM_SIZE + this.FARM_GAP;
+    const tileX = this.farmlandPlacementCursorTileX;
+    const tileY = this.farmlandPlacementCursorTileY;
+    if (tileX < 0 || tileX > 15 || tileY < 0 || tileY > 15) return;
+    const check = this.canPlaceFarmland(tileX, tileY);
+    if (!check.canPlace) return;
+    this.confirmFarmlandPlacement(tileX, tileY);
+  };
+
+  private _farmlandPlacementPointerMoveHandler: (pointer: Phaser.Input.Pointer) => void = (pointer) => {
+    if (!this.farmlandPlacementMode || !this.farmlandPlacementPreview) return;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const TILE_STEP = this.FARM_SIZE + this.FARM_GAP;
+    const tileX = Math.floor((worldPoint.x - this.farmStartX) / TILE_STEP);
+    const tileY = Math.floor((worldPoint.y - this.farmStartY) / TILE_STEP);
+    if (tileX < 0 || tileX > 15 || tileY < 0 || tileY > 15) return;
+    this.farmlandPlacementCursorTileX = tileX;
+    this.farmlandPlacementCursorTileY = tileY;
+    const check = this.canPlaceFarmland(tileX, tileY);
+    this.farmlandPlacementCanPlace = check.canPlace;
+    this.updateFarmlandPlacementPreview();
+  };
+
+  // 繪製 1x1 農地預覽
+  private updateFarmlandPlacementPreview() {
+    if (!this.farmlandPlacementPreview) return;
+    this.farmlandPlacementPreview.clear();
+    const TILE_STEP = this.FARM_SIZE + this.FARM_GAP;
+    const px = this.farmStartX + this.farmlandPlacementCursorTileX * TILE_STEP;
+    const py = this.farmStartY + this.farmlandPlacementCursorTileY * TILE_STEP;
+    const color = this.farmlandPlacementCanPlace ? 0x00ff00 : 0xff0000;
+    this.farmlandPlacementPreview.fillStyle(color, 0.4);
+    this.farmlandPlacementPreview.lineStyle(3, color, 1);
+    this.farmlandPlacementPreview.fillRect(px, py, this.FARM_SIZE, this.FARM_SIZE);
+    this.farmlandPlacementPreview.strokeRect(px, py, this.FARM_SIZE, this.FARM_SIZE);
+  }
+
+  // 檢查某 tile 是否可放置農地（無重疊、不在雞舍範圍、不超出邊界）
+  private canPlaceFarmland(tileX: number, tileY: number): { canPlace: boolean; blockedBy: string } {
+    // 1. 邊界檢查
+    if (tileX < 0 || tileX > 15 || tileY < 0 || tileY > 15) {
+      return { canPlace: false, blockedBy: 'out_of_bounds' };
+    }
+    // 2. 農地座標不重疊（用 tile 座標判斷，1x1 tile）
+    for (const [idx, state] of this.farmState.entries()) {
+      if (state.x === tileX && state.y === tileY) {
+        return { canPlace: false, blockedBy: 'farmland' };
+      }
+    }
+    // 3. 雞舍 2x2 區域不重疊（用 pixel bounds）
+    const coopResult = this.canPlaceBuilding(
+      this.farmStartX + tileX * this.FARM_SIZE,
+      this.farmStartY + tileY * this.FARM_SIZE,
+      1, 1
+    );
+    if (!coopResult.canPlace) {
+      return { canPlace: false, blockedBy: 'chicken_coop' };
+    }
+    // 4. 必須與現有農地相鄰（上/下/左/右至少一格）
+    if (this.farmState.size > 0) {
+      const hasNeighbor = Array.from(this.farmState.values()).some(state =>
+        (state.x === tileX && (state.y === tileY - 1 || state.y === tileY + 1)) ||
+        (state.y === tileY && (state.x === tileX - 1 || state.x === tileX + 1))
+      );
+      if (!hasNeighbor) {
+        return { canPlace: false, blockedBy: 'not_adjacent' };
+      }
+    }
+    return { canPlace: true, blockedBy: 'none' };
+  }
+
+  // 找第一個可放置農地的位置
+  private findFirstValidFarmlandPosition(wTiles: number, hTiles: number): { x: number; y: number } | null {
+    for (let gy = 0; gy < 16; gy++) {
+      for (let gx = 0; gx < 16; gx++) {
+        if (this.canPlaceFarmland(gx, gy).canPlace) {
+          return { x: gx * (this.FARM_SIZE + this.FARM_GAP), y: gy * (this.FARM_SIZE + this.FARM_GAP) };
+        }
+      }
+    }
+    return null;
+  }
+
+  // 點擊地圖時確認放置農地
+  private onFarmlandPlacementPointerDown() {
+    if (!this.farmlandPlacementMode) return;
+    if (Date.now() - this.farmlandPlacementStartedAt < 300) return;
+    if (!this.farmlandPlacementCanPlace) {
+      this.events.emit('game-toast', '這裡不能放置農地');
+      return;
+    }
+    this.confirmFarmlandPlacement(this.farmlandPlacementCursorTileX, this.farmlandPlacementCursorTileY);
+  }
+
+  private async confirmFarmlandPlacement(tileX: number, tileY: number) {
+    const slotIndex = this.farmlandPlacementSlotIndex;
+    if (slotIndex === null) return;
+
+    try {
+      const res = await authFetch('/api/farm/plots/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotIndex, tileX, tileY }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        this.events.emit('game-toast', data.message || '放置失敗');
+        return;
+      }
+      // 成功：關閉放置模式
+      this.exitFarmlandPlacement();
+      // 同步農地狀態
+      this.syncFarmState();
+      this.events.emit('game-toast', '農地放置成功');
+    } catch (err) {
+
+      this.events.emit('game-toast', '放置失敗，請稍後再試');
+    }
+  }
+
+  private exitFarmlandPlacement() {
+    if (this.farmlandPlacementPreview) {
+      this.farmlandPlacementPreview.destroy();
+      this.farmlandPlacementPreview = null;
+    }
+    this.farmlandPlacementMode = false;
+    this.farmlandPlacementSlotIndex = null;
+    this.input.off('pointermove', this._farmlandPlacementPointerMoveHandler);
+    this.input.off('pointerdown', this._farmlandPlacementPointerDownHandler);
+  }
+
+  // ESC 取消農地放置
+  private cancelFarmlandPlacement() {
+    this.exitFarmlandPlacement();
+    this.events.emit('game-toast', '已取消放置');
+  }
+
+  // ── DEV 鈕：農地放置（供外部呼叫做測試）──
+  private handleDevPlaceFarmland() {
+    this.enterFarmlandPlacement();
+  }
+
   private enterBuildingPlacement(buildingType: string) {
     // 防重入:已在放置模式就跳過
     if (this.coopPlacementMode) {

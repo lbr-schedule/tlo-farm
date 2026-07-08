@@ -380,6 +380,25 @@ router.post('/plots/place', async (req: AuthRequest, res: Response) => {
       [tileX, tileY, now, userId, slotIndex]
     );
 
+    // M003.2.1: 同步建立 farm_tiles，否則後續水/肥/播種/收成都找不到 tile
+    // 若座標為 NULL 不建立（unlock 階段 slot 尚無座標）
+    if (tileX !== null && tileY !== null) {
+      const existingTile = await db.execute(
+        `SELECT id FROM farm_tiles WHERE user_id = ? AND x = ? AND y = ?`,
+        [userId, tileX, tileY]
+      );
+      const tileCreated = (existingTile.rows || []).length === 0;
+      if (tileCreated) {
+        await db.execute(
+          `INSERT OR IGNORE INTO farm_tiles (user_id, x, y, state) VALUES (?, ?, ?, 'empty')`,
+          [userId, tileX, tileY]
+        );
+      }
+      console.warn(`[PLOT PLACE TILE SYNC] userId=${userId} slotIndex=${slotIndex} tileX=${tileX} tileY=${tileY} tileCreated=${tileCreated}`);
+    } else {
+      console.warn(`[PLOT PLACE TILE SYNC] skipped: tileX or tileY is null for slotIndex=${slotIndex}`);
+    }
+
     return res.json({
       success: true,
       message: '農地放置成功',
