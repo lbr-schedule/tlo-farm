@@ -37,6 +37,7 @@ import {
   shouldTransitionToWithered,
 } from '../systems/crop/CropSystem';
 import { INITIAL_FARM_COLS, INITIAL_FARM_ROWS, INITIAL_FARM_PLOT_COUNT } from '../systems/farm/FarmConfig';
+import { validateCanPlaceFarmland } from '../systems/farm/FarmlandPlacementSystem';
 
 // Re-export so existing importers still work
 // TODO: migrate importers to import from CropConfig directly
@@ -2294,39 +2295,18 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
   // 檢查某 tile 是否可放置農地（無重疊、不在雞舍範圍、不超出邊界）
   private canPlaceFarmland(tileX: number, tileY: number): { canPlace: boolean; blockedBy: string } {
-    // 1. 邊界檢查
-    if (tileX < 0 || tileX > 15 || tileY < 0 || tileY > 15) {
-      return { canPlace: false, blockedBy: 'out_of_bounds' };
-    }
-    // 2. 農地座標不重疊（用 tile 座標判斷，1x1 tile）
-    for (const [idx, state] of this.farmState.entries()) {
-      if (state.x === tileX && state.y === tileY) {
-        return { canPlace: false, blockedBy: 'farmland' };
-      }
-    }
-    // 3. 雞舍 2x2 區域不重疊（用 tile 座標判斷）
-    const COOP_W = 2;
-    const COOP_H = 2;
-    if (
-      this.chickenCoopPlaced &&
-      tileX >= this.chickenCoopTileX &&
-      tileX < this.chickenCoopTileX + COOP_W &&
-      tileY >= this.chickenCoopTileY &&
-      tileY < this.chickenCoopTileY + COOP_H
-    ) {
-      return { canPlace: false, blockedBy: 'chicken_coop' };
-    }
-    // 4. 必須與現有農地相鄰（上/下/左/右至少一格）
-    if (this.farmState.size > 0) {
-      const hasNeighbor = Array.from(this.farmState.values()).some(state =>
-        (state.x === tileX && (state.y === tileY - 1 || state.y === tileY + 1)) ||
-        (state.y === tileY && (state.x === tileX - 1 || state.x === tileX + 1))
-      );
-      if (!hasNeighbor) {
-        return { canPlace: false, blockedBy: 'not_adjacent' };
-      }
-    }
-    return { canPlace: true, blockedBy: 'none' };
+    const farmTiles = Array.from(this.farmState.values()).map(s => ({ x: s.x, y: s.y }));
+    const chickenCoop = this.chickenCoopPlaced
+      ? { placed: true, tileX: this.chickenCoopTileX, tileY: this.chickenCoopTileY, width: 2, height: 2 }
+      : null;
+    const result = validateCanPlaceFarmland({
+      tileX,
+      tileY,
+      farmTiles,
+      chickenCoop,
+      bounds: { minX: 0, maxX: 15, minY: 0, maxY: 15 },
+    });
+    return result;
   }
 
   // 找第一個可放置農地的位置
