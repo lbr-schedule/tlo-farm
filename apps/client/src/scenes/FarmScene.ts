@@ -98,6 +98,7 @@ export default class FarmScene extends Phaser.Scene {
   private farmlandPlacementCursorTileY = 0;
   private farmlandPlacementStartedAt = 0;
   private farmlandPlacementCanPlace = false;
+  private _farmlandLastBlockedBy: string = 'none';
   private coopPlacementValid = false;
   private coopPlacementTileX = 0;
   private coopPlacementTileY = 0;
@@ -596,6 +597,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           }
         }
       }
+      // M003.2.5: also update remaining unplaced farms count for UI button badge
+      try {
+        const plotsRes = await authFetch('/api/farm/plots');
+        const plotsData = await plotsRes.json();
+        if (plotsData.success && plotsData.plots) {
+          const remaining = (plotsData.plots as any[]).filter((p: any) => !p.placed).length;
+          this.events.emit('farmsRemainingUpdated', remaining);
+        }
+      } catch { /* ignore */ }
     } catch (err) {
       console.warn('[FarmScene] 同步農場狀態失敗', err);
     }
@@ -2224,14 +2234,16 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         const TILE_STEP = this.FARM_SIZE + this.FARM_GAP;
         this.farmlandPlacementCursorTileX = Math.floor(firstValid.x / TILE_STEP);
         this.farmlandPlacementCursorTileY = Math.floor(firstValid.y / TILE_STEP);
-        this.farmlandPlacementCanPlace = this.canPlaceFarmland(this.farmlandPlacementCursorTileX, this.farmlandPlacementCursorTileY).canPlace;
+        const firstCheck = this.canPlaceFarmland(this.farmlandPlacementCursorTileX, this.farmlandPlacementCursorTileY);
+        this.farmlandPlacementCanPlace = firstCheck.canPlace;
+        this._farmlandLastBlockedBy = firstCheck.blockedBy;
         this.updateFarmlandPlacementPreview();
       }
 
       // M003.2.3 農地放置：使用 Scene Input Plugin 全域監聽（官方 Placement Mode 標準做法）
       this.input.on('pointermove', this._farmlandPlacementPointerMoveHandler);
       this.input.on('pointerdown', this._farmlandPlacementPointerDownHandler);
-      this.events.emit('game-toast', '請選擇要放置農地的位置');
+      this.events.emit('game-toast', '請選擇綠色區域放置農地，需與既有農地相鄰。按 ESC 可取消。');
     } catch (err) {
 
       this.events.emit('game-toast', '進入放置模式失敗');
@@ -2262,6 +2274,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.farmlandPlacementCursorTileY = tileY;
     const check = this.canPlaceFarmland(tileX, tileY);
     this.farmlandPlacementCanPlace = check.canPlace;
+    this._farmlandLastBlockedBy = check.blockedBy;
     this.updateFarmlandPlacementPreview();
   };
 
@@ -2333,7 +2346,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     if (!this.farmlandPlacementMode) return;
     if (Date.now() - this.farmlandPlacementStartedAt < 300) return;
     if (!this.farmlandPlacementCanPlace) {
-      this.events.emit('game-toast', '這裡不能放置農地');
+      // M003.2.5: 根據 blockedBy 顯示玩家看得懂的具體原因
+      const reasonMessages: Record<string, string> = {
+        farmland:      '此處已有農地',
+        chicken_coop:  '雞舍範圍無法放置',
+        not_adjacent:  '需與既有農地相鄰',
+        out_of_bounds: '超出可放置範圍',
+      };
+      const msg = reasonMessages[this._farmlandLastBlockedBy] ?? '這裡不能放置農地';
+      this.events.emit('game-toast', msg);
       return;
     }
     this.confirmFarmlandPlacement(this.farmlandPlacementCursorTileX, this.farmlandPlacementCursorTileY);
@@ -2358,6 +2379,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       this.exitFarmlandPlacement();
       // 同步農地狀態
       this.syncFarmState();
+      this.events.emit('farmsRemainingUpdated', (data.plots as any[]).filter((p: any) => !p.placed).length);
       this.events.emit('game-toast', '農地放置成功');
     } catch (err) {
 

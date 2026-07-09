@@ -100,7 +100,7 @@ export default function GamePage() {
   const [displayUser, setDisplayUser] = useState(user);
   const [pendingLevelUp, setPendingLevelUp] = useState<number | null>(null);
   const [pendingLevelUnlocks, setPendingLevelUnlocks] = useState<string[]>([]);
-  const lastShownLevelRef = useRef<number | null>(null);
+  const [remainingFarms, setRemainingFarms] = useState<number>(0);
   const loginTaskMarkedRef = useRef(false);
 
   useEffect(() => {
@@ -257,6 +257,10 @@ export default function GamePage() {
         setPlayerToast(message);
         setTimeout(() => setPlayerToast(''), 2000);
       });
+      scene.events.on('farmsRemainingUpdated', (count: number) => {
+        setRemainingFarms(count);
+      });
+
       scene.events.on('game-toast', (message: string) => {
         console.log('[GAMEPAGE TOAST RECEIVED from scene.events]', message);
         setPlayerToast(message);
@@ -763,12 +767,27 @@ export default function GamePage() {
         [DEV] 升級彈窗
       </button>
 
-      {/* [DEV] 放置農地（M003.2.3） */}
+      {/* [DEV] 放置農地（M003.2.3 → M003.2.5 UI 正式化） */}
       <button
         onClick={() => window.dispatchEvent(new Event('startFarmlandPlacement'))}
-        style={{ position: 'fixed', bottom: 80, right: 160, zIndex: 9999, background: '#0088ff', color: '#fff', border: '2px solid #fff', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }}
+        disabled={remainingFarms === 0}
+        style={{
+          position: 'fixed',
+          bottom: 80,
+          right: 160,
+          zIndex: 9999,
+          background: remainingFarms === 0 ? '#cccccc' : '#0088ff',
+          color: '#fff',
+          border: '2px solid #fff',
+          borderRadius: 6,
+          padding: '6px 14px',
+          fontSize: 13,
+          fontWeight: 'bold',
+          cursor: remainingFarms === 0 ? 'not-allowed' : 'pointer',
+          opacity: remainingFarms === 0 ? 0.5 : 1,
+        }}
       >
-        [DEV] 放置農地
+        擴充農地{remainingFarms > 0 ? `（${remainingFarms}）` : ''}
       </button>
 
       {/* 彈窗：升級提示 */}
