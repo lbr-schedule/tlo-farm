@@ -1099,16 +1099,14 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const container = this.tiles.get(`${index}`);
     if (!container) return;
 
-    const tileCenter = this.getTileCenter(index);
-    if (!tileCenter) return;
-
-    // 進度條固定在農地中心上方 - 80px(使用統一座標系統)
+    // uiContainer 使用 container local 座標系統，以農地中心 (0,0) 為基準
+    // 上方固定 -80px (local)，不再混用 world 座標
     const UI_OFFSET_Y = -80;
     const BAR_W = 70;
     const BAR_H = 6;
-    const BAR_Y = tileCenter.y + UI_OFFSET_Y;
+    const BAR_Y = UI_OFFSET_Y;  // local to uiContainer, which is at container center
 
-    const uiContainer = this.add.container(tileCenter.x, 0);
+    const uiContainer = this.add.container(0, 0);
     uiContainer.setDepth(50);
     container.add(uiContainer);
     this.progressBars.set(index, uiContainer);
@@ -2293,13 +2291,16 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         return { canPlace: false, blockedBy: 'farmland' };
       }
     }
-    // 3. 雞舍 2x2 區域不重疊（用 pixel bounds）
-    const coopResult = this.canPlaceBuilding(
-      this.farmStartX + tileX * this.FARM_SIZE,
-      this.farmStartY + tileY * this.FARM_SIZE,
-      1, 1
-    );
-    if (!coopResult.canPlace) {
+    // 3. 雞舍 2x2 區域不重疊（用 tile 座標判斷）
+    const COOP_W = 2;
+    const COOP_H = 2;
+    if (
+      this.chickenCoopPlaced &&
+      tileX >= this.chickenCoopTileX &&
+      tileX < this.chickenCoopTileX + COOP_W &&
+      tileY >= this.chickenCoopTileY &&
+      tileY < this.chickenCoopTileY + COOP_H
+    ) {
       return { canPlace: false, blockedBy: 'chicken_coop' };
     }
     // 4. 必須與現有農地相鄰（上/下/左/右至少一格）
