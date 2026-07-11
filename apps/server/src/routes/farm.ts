@@ -351,24 +351,25 @@ router.post('/plots/place', async (req: AuthRequest, res: Response) => {
       return res.json({ success: false, message: '此格已有農地' });
     }
 
-    // 檢查雞舍重疊（雞舍是 2x2）
-    // 雞舍佔用 (tile_x_placed, tile_y_placed) 到 (tile_x_placed+1, tile_y_placed+1)
+    // 檢查雞舍重疊（雞舍是 2x2，固定佔用左上角到右下角）
+    // 雞舍佔用 (tile_x, tile_y) 到 (tile_x+1, tile_y+1)，共四格
+    // 只有 is_placed=1 的雞舍才算已放置
     const coopResult = await db.execute(
-      `SELECT id, tile_x_placed, tile_y_placed FROM chicken_buildings
-       WHERE user_id = ? AND tile_x_placed IS NOT NULL`,
+      `SELECT id, tile_x, tile_y FROM chicken_buildings
+       WHERE user_id = ? AND is_placed = 1 LIMIT 1`,
       [userId]
     );
     const coop = coopResult.rows[0];
     if (coop) {
-      const cx = coop.tile_x_placed;
-      const cy = coop.tile_y_placed;
-      // 雞舍 2x2 的四格
+      const cx = coop.tile_x;
+      const cy = coop.tile_y;
+      // 雞舍 2x2 footprint：四個相鄰 tile
       const coopTiles = [
         [cx, cy], [cx + 1, cy], [cx, cy + 1], [cx + 1, cy + 1]
       ];
       for (const [ox, oy] of coopTiles) {
         if (tileX === ox && tileY === oy) {
-          return res.json({ success: false, message: '此格已有建築' });
+          return res.json({ success: false, message: '此位置與雞舍重疊，無法放置農地' });
         }
       }
     }

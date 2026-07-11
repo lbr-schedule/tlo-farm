@@ -151,8 +151,8 @@ router.post('/chicken-coop/place', async (req: AuthRequest, res: Response) => {
 
     // Upsert building with position
     await db.execute(
-      `INSERT INTO chicken_buildings (user_id, tile_x, tile_y, unlocked_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET tile_x = excluded.tile_x, tile_y = excluded.tile_y, updated_at = ?`,
+      `INSERT INTO chicken_buildings (user_id, tile_x, tile_y, unlocked_at, is_placed) VALUES (?, ?, ?, ?, 1)
+       ON CONFLICT(user_id) DO UPDATE SET tile_x = excluded.tile_x, tile_y = excluded.tile_y, is_placed = 1, updated_at = ?`,
       [userId, tileX, tileY, Date.now(), Date.now()]
     );
 
