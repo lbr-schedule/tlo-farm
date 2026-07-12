@@ -29,6 +29,9 @@ importers:
 
   apps/client:
     dependencies:
+      '@tlo-farm/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       phaser:
         specifier: ^3.70.0
         version: 3.70.0

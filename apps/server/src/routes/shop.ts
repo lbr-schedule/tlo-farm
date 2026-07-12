@@ -1,8 +1,20 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+// 作物視圖（對應 SQL alias）
+interface CropRow {
+  id: number;
+  nameZhTw: string;
+  growTimeSec: number;
+  sellPrice: number;
+  buyPrice: number;
+  exp: number;
+  sprite: string;
+  requiredLevel: number;
+}
+
+const router: RouterType = Router();
 
 // 畜牧商品定義
 const LIVESTOCK_ITEMS = [
@@ -33,7 +45,7 @@ router.get('/items', async (req: AuthRequest, res: Response) => {
       `SELECT id, name_zh_tw as nameZhTw, grow_time_sec as growTimeSec, sell_price as sellPrice, buy_price as buyPrice, exp, sprite, required_level as requiredLevel FROM crops WHERE required_level <= ? ORDER BY required_level ASC`,
       [playerLevel]
     );
-    const crops = cropsResult.rows || [];
+    const crops = (cropsResult.rows || []) as CropRow[];
     console.log('[SHOP SEED FILTER DEBUG]', {
       userId,
       playerLevel,

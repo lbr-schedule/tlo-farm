@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
@@ -10,7 +10,7 @@ const CHICK_FEED_ITEM_ID = 2;        // feed_normal items.id
 const EGG_CROP_ID = 9;               // egg crop id
 const MAX_CHICKEN_SLOTS = 4;
 
-const router = Router();
+const router: RouterType = Router();
 
 // Helper: ensure building + 4 slots exist for user
 async function ensureChickenData(userId: number) {

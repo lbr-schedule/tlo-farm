@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
+import type { Router as RouterType } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { db } from '@tlo-farm/database';
 
-const router = Router();
+const router: RouterType = Router();
 
 interface User {
   id: number;
@@ -270,7 +271,11 @@ router.get('/me', async (req: Request, res: Response) => {
 function generateAccessToken(user: { id: number; account: string }): string {
   const secret = process.env.JWT_SECRET || 'default-secret-change-me';
   const expiresIn = process.env.JWT_EXPIRES_IN || '15m';
-  return jwt.sign({ userId: user.id, account: user.account }, secret, { expiresIn });
+  return jwt.sign(
+    { userId: user.id, account: user.account },
+    secret,
+    { expiresIn } as SignOptions
+  );
 }
 
 async function generateRefreshToken(userId: number): Promise<string> {

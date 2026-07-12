@@ -1,8 +1,16 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+// 訂單查詢作物子集（對應 SQL alias）
+interface UnlockedCrop {
+  id: number;
+  name: string;
+  sellPrice: number;
+  requiredLevel: number;
+}
+
+const router: RouterType = Router();
 
 // 更新訂單任務進度的輔助函數
 async function updateOrderTaskProgress(userId: number) {
@@ -117,7 +125,7 @@ async function generateOrder(userId: number, playerLevel: number) {
     `SELECT id, name_zh_tw as name, sell_price as sellPrice, required_level as requiredLevel FROM crops WHERE required_level <= ? ORDER BY id`,
     [playerLevel]
   );
-  const unlockedCrops = cropsResult.rows || [];
+  const unlockedCrops = (cropsResult.rows || []) as UnlockedCrop[];
 
   if (unlockedCrops.length === 0) {
     throw { status: 400, message: '尚無已解鎖的作物' };
@@ -135,7 +143,7 @@ async function generateOrder(userId: number, playerLevel: number) {
   const selectedCrops = shuffledCrops.slice(0, Math.min(typeCount, unlockedCrops.length));
 
   // 生成需求並計算作物總價值
-  const requirements = selectedCrops.map(crop => {
+  const requirements = (selectedCrops as UnlockedCrop[]).map(crop => {
     const quantity = randomInt(config.quantityRange[0], config.quantityRange[1]);
     return {
       itemName: crop.name,
@@ -171,7 +179,7 @@ async function generateOrder(userId: number, playerLevel: number) {
 }
 
 // 解析 requirements JSON
-function parseRequirements(requirementsStr: string) {
+function parseRequirements(requirementsStr: string): Array<{ itemName: string; quantity: number; totalValue?: number }> {
   try {
     return JSON.parse(requirementsStr);
   } catch {

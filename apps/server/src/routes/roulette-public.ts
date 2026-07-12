@@ -1,6 +1,19 @@
 import { Router, Request, Response } from 'express';
+import type { Router as RouterType } from 'express';
 
-const router = Router();
+// BBR Garage API response type
+interface BbrPhoto {
+  imageUrl?: string;
+  username: string;
+  caption?: string;
+  igUrl?: string;
+}
+interface BbrApiResponse {
+  success?: boolean;
+  photos?: BbrPhoto[];
+}
+
+const router: RouterType = Router();
 
 // 廣告圖片清單（靜態備用）
 const AD_IMAGES = [
@@ -32,9 +45,9 @@ router.get('/ad', async (req: Request, res: Response) => {
       const cat = categories[Math.floor(Math.random() * categories.length)];
       const bbrRes = await fetch(`https://bbr-garage.up.railway.app/api/photos/${encodeURIComponent(cat)}?limit=4`);
       if (bbrRes.ok) {
-        const bbrData = await bbrRes.json();
-        if (bbrData.success && bbrData.photos && bbrData.photos.length > 0) {
-          adPhotos = bbrData.photos.slice(0, 4).map((p: any) => ({
+        const bbrData = await bbrRes.json() as BbrApiResponse;
+        if (bbrData?.success && Array.isArray(bbrData?.photos) && bbrData.photos.length > 0) {
+          adPhotos = bbrData.photos.slice(0, 4).map((p: BbrPhoto) => ({
             imageUrl: p.imageUrl || '', // base64 data:image/jpeg;base64,...
             username: p.username,
             caption: p.caption || '',

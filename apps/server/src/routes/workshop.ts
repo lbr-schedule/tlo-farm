@@ -1,8 +1,8 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 
 // ============================================================
 // 加工廠配方靜態設定（PR001 only）

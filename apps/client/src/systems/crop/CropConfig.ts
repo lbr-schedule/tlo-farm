@@ -1,6 +1,6 @@
 // ============================================================
 // CropConfig — 作物相關純設定資料
-// 
+//
 // 搬移自 FarmScene.ts
 // 目的：CropSystem 重構 Tier 0 — 純資料分離
 //
@@ -9,11 +9,19 @@
 // ============================================================
 
 // ─────────────────────────────────────────
+//  Shared Constants（來自 @tlo-farm/shared/map.ts）
+// ─────────────────────────────────────────
+import {
+  MAP_GRID_WIDTH,
+  MAP_GRID_HEIGHT,
+} from '@tlo-farm/shared';
+
+// ─────────────────────────────────────────
 //  Tile Types（土地類型）
 // ─────────────────────────────────────────
 export const TILE_SIZE = 32;
-export const GRID_WIDTH = 16;
-export const GRID_HEIGHT = 16;
+export const GRID_WIDTH = MAP_GRID_WIDTH;
+export const GRID_HEIGHT = MAP_GRID_HEIGHT;
 
 export const TILE_TYPES = {
   GRASS: 'grass',

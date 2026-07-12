@@ -1,8 +1,8 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 
 // 確保任務資料表存在
 async function ensureTablesExist() {

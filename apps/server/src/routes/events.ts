@@ -1,8 +1,8 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 
 // Daily reward definitions
 const DAILY_REWARDS = [

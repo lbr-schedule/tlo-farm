@@ -91,3 +91,6 @@ export function getLevelProgress(exp: number, level: number): { current: number;
 export const INITIAL_GOLD = 500;
 export const INITIAL_EXP = 0;
 export const INITIAL_LEVEL = 1;
+
+// World Map Contract
+export * from './map';

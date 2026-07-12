@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
+import type { Router as RouterType } from 'express';
 import { db } from '@tlo-farm/database';
 
-const router = Router();
+const router: RouterType = Router();
 
 // 等级的各類解鎖項目（從現有程式碼匯總而來）
 const LEVEL_UNLOCKS: Record<number, { crops: string[]; items: string[]; buildings: string[] }> = {

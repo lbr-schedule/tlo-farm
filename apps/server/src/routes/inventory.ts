@@ -1,8 +1,8 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
 import type { AuthRequest } from '../middleware/auth';
 
-const router = Router();
+const router: RouterType = Router();
 
 // 取得背包內容
 router.get('/', async (req: AuthRequest, res: Response) => {

@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
+import type { Router as RouterType } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '@tlo-farm/database';
 
-const router = Router();
+const router: RouterType = Router();
 
 // 中間層：驗證 JWT
 function authMiddleware(req: Request, res: Response, next: Function) {

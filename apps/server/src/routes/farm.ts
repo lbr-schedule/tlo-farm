@@ -1,10 +1,11 @@
-import { Router, Response } from 'express';
+import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
+import { FARMLAND_FOOTPRINT, isFootprintInsideMap } from '@tlo-farm/shared';
 import type { AuthRequest } from '../middleware/auth';
 
 const DEBUG = false;
 
-const router = Router();
+const router: RouterType = Router();
 
 // 更新任務進度的輔助函數
 // amount = 這次收成的數量（harvestYield），用來增加 progress
@@ -337,7 +338,7 @@ router.post('/plots/place', async (req: AuthRequest, res: Response) => {
     }
 
     // 檢查範圍 16x16
-    if (tileX < 0 || tileX > 15 || tileY < 0 || tileY > 15) {
+    if (!isFootprintInsideMap(tileX, tileY, FARMLAND_FOOTPRINT)) {
       return res.json({ success: false, message: '座標超出農場範圍' });
     }
 
