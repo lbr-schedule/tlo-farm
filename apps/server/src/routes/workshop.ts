@@ -1,5 +1,13 @@
 import { Router, type Router as RouterType, Response } from 'express';
 import { db } from '@tlo-farm/database';
+
+// M006.6: Shared Map Contract
+import {
+  TILE_STEP,
+  FOOD_WORKSHOP_FOOTPRINT,
+  CHICKEN_COOP_FOOTPRINT,
+  isFootprintInsideMap,
+} from '@tlo-farm/shared';
 import type { AuthRequest } from '../middleware/auth';
 
 const router: RouterType = Router();
@@ -56,6 +64,35 @@ router.post('/place', async (req: AuthRequest, res: Response) => {
     const ws = wsRows.rows?.[0];
     if (!ws) return res.status(404).json({ success: false, message: '找不到加工廠記錄，請先購買' });
     if (ws.isPlaced) return res.status(400).json({ success: false, message: '加工廠已經放置過了' });
+
+    // 邊界驗證（使用 Shared Map Contract）
+    if (!isFootprintInsideMap(tileX, tileY, FOOD_WORKSHOP_FOOTPRINT)) {
+      return res.status(400).json({ success: false, message: '座標超出農場範圍' });
+    }
+
+    // 雞舍碰撞檢查（2×2 tile footprint）
+    const coopRows = await db.execute(
+      `SELECT tile_x as tileX, tile_y as tileY FROM chicken_buildings WHERE user_id = ?`,
+      [userId]
+    );
+    if (coopRows.rows?.length) {
+      const coop = coopRows.rows[0];
+      if (coop.tileX !== null && coop.tileY !== null) {
+        const wsLeft = tileX * TILE_STEP;
+        const wsTop = tileY * TILE_STEP;
+        const wsRight = wsLeft + FOOD_WORKSHOP_FOOTPRINT * TILE_STEP;
+        const wsBottom = wsTop + FOOD_WORKSHOP_FOOTPRINT * TILE_STEP;
+        const coopLeft = coop.tileX * TILE_STEP;
+        const coopTop = coop.tileY * TILE_STEP;
+        const coopRight = coopLeft + CHICKEN_COOP_FOOTPRINT * TILE_STEP;
+        const coopBottom = coopTop + CHICKEN_COOP_FOOTPRINT * TILE_STEP;
+        const overlapsX = wsLeft < coopRight && wsRight > coopLeft;
+        const overlapsY = wsTop < coopBottom && wsBottom > coopTop;
+        if (overlapsX && overlapsY) {
+          return res.status(400).json({ success: false, message: '此位置與雞舍重疊' });
+        }
+      }
+    }
 
     const now = Date.now();
     await db.execute(
