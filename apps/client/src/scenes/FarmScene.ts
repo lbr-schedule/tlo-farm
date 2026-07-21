@@ -1330,23 +1330,20 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
   // 收成飄字
   // ============================================================
   // ============================================================
-  // 收成飄字(使用統一座標系統 getTileCenter)
+  // 收成飄字（使用統一座標系統 getTileCenter）
   // ============================================================
-  private showHarvestFloatingText(index: number, cropName: string, harvestYield: number, expEarned: number) {
+  private showHarvestFloatingText(index: number, cropName: string, expEarned: number, harvestYield?: number) {
     const container = this.tiles.get(`${index}`);
     if (!container) return;
 
-    const tileCenter = this.getTileCenter(index);
-    if (!tileCenter) return;
+    // 飄字容器:置於農地上方（container 已是世界座標，用 local offset 避免雙重計數）
+    const floatY = container.y - 50;
 
-    // 飄字容器:置於 tileCenter 上方(world coords since farmland container is at world pos)
-    const worldX = container.x + tileCenter.x;
-    const worldY = container.y + tileCenter.y - 50;
-
-    const floatContainer = this.add.container(worldX, worldY);
+    const floatContainer = this.add.container(0, floatY - container.y);
     floatContainer.setDepth(300);
+    container.add(floatContainer);
 
-    const cropText = this.add.text(0, 0, `${cropName} +${harvestYield}`, {
+    const cropText = this.add.text(0, 0, `${cropName} +${harvestYield ?? 1}`, {
       fontSize: '16px',
       fontFamily: "'Cubic 11', sans-serif",
       color: '#88cc00',
@@ -1370,11 +1367,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     this.tweens.add({
       targets: floatContainer,
-      y: worldY - 60,
+      y: floatY - container.y - 60,
       alpha: 0,
       duration: 800,
       ease: 'Quad.easeOut',
-      onComplete: () => floatContainer.destroy(),
+      onComplete: () => {
+        if (floatContainer.active) {
+          floatContainer.destroy();
+        }
+      },
     });
   }
 
@@ -1475,16 +1476,10 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
       });
       const data = await res.json();
       if (data.success) {
-        console.log('[HARVEST FLOATING TEXT SHOWN]', {
-          cropName: data.harvest.cropName,
-          harvestYield: data.harvest.harvestYield,
-          exp: expReward,
-        });
         // ── 第一時間顯示飄字（不等背景同步）──
-        this.showHarvestFloatingText(index, data.harvest.cropName, data.harvest.harvestYield, expReward);
+        this.showHarvestFloatingText(index, data.harvest.cropName, expReward, data.harvest.harvestYield);
 
         // ── 背景同步（不等飄字完成）──
-        console.log('[HARVEST BACKGROUND SYNC START]');
         // 刷新背包
         backpackSystem.fetchAll();
         // userUpdated 事件
@@ -1496,7 +1491,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
           cropName: data.cropName ?? state.cropId,
           harvestYield: data.harvest?.harvestYield ?? 1,
         });
-        console.log('[HARVEST BACKGROUND SYNC DONE]');
+
       } else {
         console.warn('[FarmScene] 收成失敗,回滾:', data.message);
         // API 失敗:重新讀取農場狀態
