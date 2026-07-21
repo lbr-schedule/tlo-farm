@@ -242,7 +242,17 @@ export default function BackpackModal({ onClose, onSelectSeed, onSellSuccess }: 
                     src={getInventoryIcon(item)}
                     alt={item.name}
                     className={item.sprite === '普通肥料.png' ? 'item-icon fertilizer-icon' : 'item-icon'}
-                    style={item.itemId === 5 ? { maxWidth: 56, maxHeight: 56, width: 'auto', height: 'auto', objectFit: 'contain', imageRendering: 'pixelated' } : {}}
+                    style={
+                      activeTab === 'crop' && (item.itemId === 6 || item.itemId === 7)
+                        ? { width: 66, height: 66, objectFit: 'contain', imageRendering: 'pixelated' }
+                        : activeTab === 'seed' && (item.itemId === 6 || item.itemId === 7)
+                        ? { width: 136, height: 136, objectFit: 'contain', imageRendering: 'pixelated', transform: `translateX(${item.itemId === 6 ? 20 : 0}px) translateY(${item.itemId === 7 ? 3 : 0}px)` }
+                        : activeTab === 'seed' && item.itemId === 5
+                        ? { width: 106, height: 106, objectFit: 'contain', imageRendering: 'pixelated', display: 'block', flexShrink: 0 }
+                        : activeTab === 'seed'
+                        ? { width: 56, height: 56, objectFit: 'contain', imageRendering: 'pixelated' }
+                        : {}
+                    }
 
 
                     onError={(e) => {
