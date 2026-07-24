@@ -85,6 +85,12 @@ export default class FarmScene extends Phaser.Scene {
   // 起始點
   private FARM_ORIGIN_X = 300;
   private FARM_ORIGIN_Y = 250;
+  // M006.3D.78: 農地整體視覺縮放與位移（只讀常數）
+  private readonly FARM_VISUAL_SCALE = 0.82;
+  private readonly FARM_VISUAL_OFFSET_Y = 20;
+  // 農地菱形整體視覺中心（Sprite Bounds 範圍：x[12~732], y[200~700]）
+  private readonly FARM_VISUAL_CENTER_X = 372;
+  private readonly FARM_VISUAL_CENTER_Y = 450;
   private CANVAS_W = 0;
   private CANVAS_H = 0;
 
@@ -108,6 +114,15 @@ export default class FarmScene extends Phaser.Scene {
     const x = this.FARM_ORIGIN_X + col * this.COL_DX + row * this.ROW_DX;
     const y = this.FARM_ORIGIN_Y + row * this.ROW_DY + col * this.COL_DY;
     return { x, y, col, row };
+  }
+
+  // M006.3D.78: 農地整體縮小 8% + 下移 10px（統一轉換，只此一處）
+  private getAdjustedFarmlandPosition(index: number): { x: number; y: number } {
+    const original = this.getFarmlandPosition(index);
+    return {
+      x: this.FARM_VISUAL_CENTER_X + (original.x - this.FARM_VISUAL_CENTER_X) * this.FARM_VISUAL_SCALE,
+      y: this.FARM_VISUAL_CENTER_Y + (original.y - this.FARM_VISUAL_CENTER_Y) * this.FARM_VISUAL_SCALE + this.FARM_VISUAL_OFFSET_Y,
+    };
   }
 
 
@@ -300,12 +315,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     // 背景透明,讓 React 層的草地背景顯示
     // 草地背景由 React 層提供,Phaser 層保持透明
 
-    // M006.3D.60: 24 塊等角菱形（統一 getFarmlandPosition）
-    console.log('[M006.3D.60 POSITION] Starting 24-farmland initialization');
+    // M006.3D.78: 24 塊等角菱形（使用調整後座標 + 視覺縮放）
+    console.log('[M006.3D.78 POSITION] Starting 24-farmland initialization');
     for (let i = 0; i < 24; i++) {
-      const { x: px, y: py, col, row } = this.getFarmlandPosition(i);
+      const { x: px, y: py } = this.getAdjustedFarmlandPosition(i);
+      const col = i % this.FARM_COLS;
+      const row = Math.floor(i / this.FARM_COLS);
 
       const farmContainer = this.add.container(px, py);
+      farmContainer.setScale(this.FARM_VISUAL_SCALE);
       farmContainer.setDepth(10 + Math.round(py));
       farmContainer.setData('index', i);
       farmContainer.setInteractive(
@@ -333,7 +351,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
         cropStatus: 'needs_water',
       });
 
-      farmContainer.on('pointerdown', () => this.onFarmClick(i, px, py));
+      farmContainer.on('pointerdown', () => this.onFarmClick(i, farmContainer.x, farmContainer.y));
 
       this.tiles.set(`${i}`, farmContainer);
       this.farmlandObjects.push(farmContainer);
@@ -486,11 +504,12 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     this.indexToCoordinate.set(index, { x, y });
   }
 
-  // M006.3D.60: 使用統一 getFarmlandPosition
+  // M006.3D.78: 使用統一 getAdjustedFarmlandPosition
   private ensureFarmlandObject(index: number, x: number, y: number): void {
     if (this.farmlandObjects[index]) return;
-    const { x: px, y: py } = this.getFarmlandPosition(index);
+    const { x: px, y: py } = this.getAdjustedFarmlandPosition(index);
     const container = this.add.container(px, py);
+    container.setScale(this.FARM_VISUAL_SCALE);
     container.setDepth(10 + Math.round(py));
     container.setData('index', index);
     container.setInteractive(
@@ -501,7 +520,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     soilImg.setDisplaySize(this.FARM_W, this.FARM_H);
     soilImg.setOrigin(0.5, 0.5);
     container.add(soilImg);
-    container.on('pointerdown', () => this.onFarmClick(index, px, py));
+    container.on('pointerdown', () => this.onFarmClick(index, container.x, container.y));
     this.farmlandObjects[index] = container;
     this.tiles.set(String(index), container);
     if (!this.farmState.has(index)) {
@@ -808,7 +827,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     }
 
     // 成長中 → 顯示操作選單(澆水/施肥)
-        this.showActionMenu(index, x, y - this.HALF_H - 10, state);
+        this.showActionMenu(index, x, y - this.HALF_H * this.FARM_VISUAL_SCALE - 10, state);
   }
 
   // ============================================================
@@ -857,13 +876,15 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const canvasHeight = this.scale.height;
 
     // ── 選中農地菱形高亮框（直接加到 scene，world coordinates）──
+    const scaledHalfW = this.HALF_W * this.FARM_VISUAL_SCALE;
+    const scaledHalfH = this.HALF_H * this.FARM_VISUAL_SCALE;
     this.seedHighlight = this.add.graphics();
     this.seedHighlight.lineStyle(3, 0xFFD700, 1);
     this.seedHighlight.strokePoints([
-      { x: _x, y: _y - this.HALF_H },
-      { x: _x + this.HALF_W, y: _y },
-      { x: _x, y: _y + this.HALF_H },
-      { x: _x - this.HALF_W, y: _y },
+      { x: _x, y: _y - scaledHalfH },
+      { x: _x + scaledHalfW, y: _y },
+      { x: _x, y: _y + scaledHalfH },
+      { x: _x - scaledHalfW, y: _y },
     ], true);
     this.seedHighlight.setDepth(4999);
 //     console.log('[SEED HIGHLIGHT DEBUG]', {
@@ -884,7 +905,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
     const coopBounds = this.chickenCoopSprite?.getBounds();
 
     // 優先放農地右側
-    let popupX = _x + this.HALF_W + SIDE_GAP;
+    let popupX = _x + scaledHalfW + SIDE_GAP;
     let popupY = _y - POPUP_H / 2;
 
     const popupRight = popupX + POPUP_W;
@@ -895,7 +916,7 @@ this.load.image('grass_bg', '/assets/tile/grass_tiles/grass_00_00.png');
 
     // 右側超出 或 與雞舍重疊 → 改放左側
     if (popupRight > canvasWidth - MARGIN || coopOverlaps) {
-      popupX = _x - this.HALF_W - POPUP_W - SIDE_GAP;
+      popupX = _x - scaledHalfW - POPUP_W - SIDE_GAP;
     }
 
     // clamp 確保在畫面內
