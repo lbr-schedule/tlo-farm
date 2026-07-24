@@ -18,8 +18,8 @@ export const seedIconById: Record<number, string> = {
   3: '/assets/icon/cropped/icon_seed_carrot.png',
   4: '/assets/icon/cropped/icon_seed_potato.png',
   5: '/assets/crops/甘蔗種子.png',   // 甘蔗
-  6: '/assets/icon/cropped/icon_seed.png',  // 南瓜 (無專用)
-  7: '/assets/icon/cropped/icon_seed.png',  // 胡蘿蔔 (無專用)
+  6: '/assets/icon/cropped/icon_seed_strawberry.png',  // 草莓
+  7: '/assets/icon/cropped/icon_seed_tomato.png',  // 番茄
   8: '/assets/icon/cropped/icon_seed.png',  // 藍莓 (無專用)
 };
 
@@ -30,8 +30,8 @@ export const fruitIconById: Record<number, string> = {
   3: '/assets/icon/cropped/icon_fruit_carrot.png',  // 紅蘿蔔
   4: '/assets/icon/cropped/icon_fruit_potato.png',
   5: '/assets/crops/甘蔗果實_icon_fixed.png',   // 甘蔗果實（背包專用128x128置中，四邊留白）
-  6: '/assets/icon/cropped/icon_fruit.png',   // 南瓜 (無專用)
-  7: '/assets/icon/cropped/icon_fruit.png',   // 胡蘿蔔 (無專用)
+  6: '/assets/icon/cropped/icon_fruit_strawberry.png',   // 草莓
+  7: '/assets/icon/cropped/icon_fruit_tomato.png',   // 番茄
   8: '/assets/icon/cropped/icon_fruit.png',   // 藍莓 (無專用)
 };
 
