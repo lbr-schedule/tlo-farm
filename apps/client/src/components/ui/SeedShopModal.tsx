@@ -550,9 +550,9 @@ export default function SeedShopModal({ onClose, userGold, userLevel, onPurchase
                             src={getSeedIcon(crop.nameZhTw)}
                             alt={crop.nameZhTw}
                             style={{
-                              width: crop.id === 5 ? 112 : 56,
-                              height: crop.id === 5 ? 112 : 56,
-                              marginLeft: crop.id === 5 ? 6 : 0,
+                              width: crop.id === 5 ? 112 : crop.id === 6 || crop.id === 7 ? 70 : 56,
+                              height: crop.id === 5 ? 112 : crop.id === 6 || crop.id === 7 ? 70 : 56,
+                              marginLeft: crop.id === 5 ? 6 : crop.id === 6 || crop.id === 7 ? -5 : 0,
                               objectFit: 'contain',
                               imageRendering: 'pixelated',
                               display: 'block',
